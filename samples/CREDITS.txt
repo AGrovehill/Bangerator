@@ -1,0 +1,11 @@
+Instrument samples: taken from nbrosowsky/tonejs-instruments
+(https://github.com/nbrosowsky/tonejs-instruments), trimmed to mono 96 kbps.
+
+  piano   - VSCO 2 Community Edition (Versilian Studios), CC0 / public domain
+  guitar  - University of Iowa Electronic Music Studios (acoustic guitar), free for any use
+  bass    - Karoryfer Samples (electric bass), free
+
+The 808-style drum kit isn't made from samples. js/drums.js synthesizes it
+in the browser the same way the analog TR-808 made its sounds (sine
+oscillators with pitch drops, filtered noise, and six detuned square waves
+for cymbals and hats).
