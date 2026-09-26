@@ -296,6 +296,14 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
+// The first release's demo (an A minor loop) got autosaved for everyone who visited.
+// If that project was never edited, swap in the current demo instead of loading the stale one.
+function isUntouchedOldDemo(p) {
+  const OLD_LEAD = '4,7,6,4,2,4,5,7,9,7,5,4,7,6,4,2,4,6,8,7';
+  return p.name === 'My first banger' && p.noteMode === undefined
+    && p.tracks?.length === 2 && p.tracks[0].notes.map(n => n.deg).join(',') === OLD_LEAD;
+}
+
 // ---------- Boot ----------
 function boot() {
   initTopbar();
@@ -303,7 +311,7 @@ function boot() {
   subscribe(onChange);
   const saved = loadSaved();
   let p = saved;
-  if (!p) p = defaultProject();
+  if (!p || isUntouchedOldDemo(p)) p = defaultProject();
   try { setProject(p); } catch (e) { console.error('Saved project broken, loading demo', e); setProject(defaultProject()); }
   ui.selectedTrackId = store.project.tracks[0]?.id ?? null;
   renderCompose();
