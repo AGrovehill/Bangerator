@@ -1,0 +1,3 @@
+# source MIDI files (not needed by the app)
+*.mid
+*.midi

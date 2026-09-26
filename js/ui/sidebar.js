@@ -1,6 +1,6 @@
 // Sidebar: circle of fifths, scale info, chord palette, "what comes next" and progressions.
 
-import { store, commit, changeScale, loopSteps, STEPS_PER_BAR, MAX_BARS } from '../state.js';
+import { store, commit, changeScale, changeKey, loopSteps, STEPS_PER_BAR, MAX_BARS } from '../state.js';
 import { SCALES, scaleSteps, harmonyScaleId, spellScale, intervalLabel, stepPattern, keySignature, keyName,
   romanNumeral, chordName, chordFunction, CHORD_TYPES, FUNCTION_INFO, PROGRESSIONS, suggestNext, harmonize, chordSemis, chordQuality, mod } from '../theory.js';
 import { renderCircle } from './circle.js';
@@ -14,9 +14,8 @@ export function renderSidebar() {
   const p = store.project;
   renderCircle(document.getElementById('circle'), p, {
     onPickRoot: (root, fam) => {
-      p.root = root;
-      if ((p.scale === 'major' && fam === 'minor') || (p.scale === 'minor' && fam === 'major')) { changeScale(fam); return; }
-      commit('all');
+      const flip = (p.scale === 'major' && fam === 'minor') || (p.scale === 'minor' && fam === 'major');
+      changeKey(root, flip ? fam : p.scale);
     },
     onAudition: deg => previewChord(deg, 'triad'),
   });
@@ -55,7 +54,7 @@ function renderScaleCard(p) {
     h('div', { class: 'scale-mood' }, sc.mood),
     h('div', { class: 'degrees' }, ...chips),
     h('div', { class: 'keysig' }, `Steps: ${pattern.join(' ')} · Key signature: ${sig === 0 ? 'none' : Math.abs(sig) + (sig > 0 ? '♯' : '♭')}`),
-    moodBtns,
+    moodBtns || '',
     h('p', { class: 'hint' }, 'Swap the scale and your melody keeps its numbers, so the same loop gets a new mood.'));
 }
 

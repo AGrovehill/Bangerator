@@ -1,6 +1,7 @@
 // Bangerator entry point: wires the top bar, views, keyboard shortcuts and the playhead loop.
 
-import { store, subscribe, commit, setProject, loadSaved, defaultProject, changeScale, setBars, undo, redo,
+import { store, subscribe, commit, setProject, loadSaved, defaultProject, changeScale, changeRoot, setBars, undo, redo,
+  outOfScaleCount, snapToScale,
   exportProjectJSON, importProjectJSON, loadSampleData, MAX_BARS, loopSteps } from './state.js';
 import { SCALES, SCALE_ORDER, ROOT_NAMES, keySignature, harmonyScaleId, degToSemis, scaleSteps } from './theory.js';
 import { initAudio, audio, ensureSampleSet, decodeUserSample } from './audio.js';
@@ -25,7 +26,7 @@ function initTopbar() {
   $('in-bars').addEventListener('change', e => setBars(Number(e.target.value)));
   $('in-swing').addEventListener('input', e => { store.project.swing = Number(e.target.value); });
   $('in-swing').addEventListener('change', () => commit('tempo'));
-  $('in-root').addEventListener('change', e => { store.project.root = Number(e.target.value); commit('all'); });
+  $('in-root').addEventListener('change', e => changeRoot(Number(e.target.value)));
   $('in-scale').addEventListener('change', e => changeScale(e.target.value));
   $('btn-scale-prev').addEventListener('click', () => stepScale(-1));
   $('btn-scale-next').addEventListener('click', () => stepScale(1));
@@ -33,6 +34,8 @@ function initTopbar() {
   $('btn-redo').addEventListener('click', redo);
   $('btn-add-track').addEventListener('click', addTrack);
   $('in-zoom').addEventListener('input', e => { ui.cellW = Number(e.target.value); renderCompose(); });
+  document.querySelectorAll('#note-mode button').forEach(b => b.addEventListener('click', () => setNoteMode(b.dataset.mode)));
+  $('btn-snap').addEventListener('click', () => { snapToScale(); toast('Every note moved to its nearest scale note.'); });
   $('in-notenames').addEventListener('change', e => { store.project.showNoteNames = e.target.checked; commit('all'); });
 
   document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => showTab(t.dataset.tab)));
@@ -69,7 +72,27 @@ function stepScale(dir) {
   toast(`${SCALES[next].name}: ${SCALES[next].mood}`);
 }
 
+function setNoteMode(mode) {
+  const p = store.project;
+  if (p.noteMode === mode) return;
+  p.noteMode = mode;
+  commit('all');
+  toast(mode === 'fixed'
+    ? 'DAW mode: notes keep their exact pitch. Change the scale or key and see which notes fall outside it.'
+    : 'Scale-degree mode: notes follow the key and scale, so a scale swap keeps the melody in the scale.', 4500);
+}
+
+// The mode switch and the "notes outside the scale" counter in the compose toolbar.
+function syncNoteMode() {
+  const p = store.project;
+  document.querySelectorAll('#note-mode button').forEach(b => b.classList.toggle('on', b.dataset.mode === p.noteMode));
+  const n = outOfScaleCount();
+  $('scale-status').hidden = !n;
+  $('scale-status-text').textContent = `${n} note${n === 1 ? '' : 's'} outside the scale`;
+}
+
 function syncTopbar() {
+  syncNoteMode();
   const p = store.project;
   $('in-bpm').value = p.bpm;
   $('in-bars').value = p.bars;

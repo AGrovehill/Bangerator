@@ -21,6 +21,7 @@ export function builtinPatches() {
     sawbass: synth('Saw Bass', { wave: 'sawtooth', wave2: 'square', octave2: -1, mix2: 0.5, detune: 4, attack: 0.003, decay: 0.2, sustain: 0.5, release: 0.08, cutoff: 900, resonance: 4, filterEnv: 1500 }),
     sub808: synth('808 Sub', { wave: 'sine', wave2: 'triangle', mix2: 0.15, detune: 0, attack: 0.002, decay: 1.2, sustain: 0.3, release: 0.3, cutoff: 3000, pitchDrop: 12, pitchTime: 0.06, volume: 0.9 }),
     pad: synth('Warm Pad', { wave: 'sawtooth', wave2: 'triangle', mix2: 0.6, detune: 18, attack: 0.35, decay: 0.8, sustain: 0.7, release: 0.9, cutoff: 1800, resonance: 1, volume: 0.55 }),
+    stab: synth('Trance Stab', { wave: 'sawtooth', wave2: 'square', mix2: 0.4, detune: 16, attack: 0.003, decay: 0.22, sustain: 0.35, release: 0.18, cutoff: 3200, resonance: 3, filterEnv: 3500, volume: 0.6 }),
     keys: synth('Soft Keys', { wave: 'triangle', wave2: 'sine', octave2: 1, mix2: 0.35, detune: 3, attack: 0.004, decay: 0.6, sustain: 0.25, release: 0.35, cutoff: 6000, volume: 0.7 }),
   };
 }
@@ -38,52 +39,62 @@ function beat(pattern) { // "x...x...x...x..." -> velocities
   return [...pattern].map(c => (c === 'x' ? 1 : c === 'X' ? 2 : 0));
 }
 
+// Main riff of "Meet Her at the Love Parade" (Da Hool, 1997), taken from a MIDI transcription.
+// Two voices in parallel thirds over a single D chord, in D Mixolydian ♭6 (D E F♯ G A B♭ C).
+// Each entry is [step, length, degree]; degree 0 = D4 with the track at octave 4.
+const LOVE_PARADE_RIFF = [
+  [0, 1, 4], [0, 1, 6], [1, 1, 4], [1, 1, 6], [2, 1, 4], [2, 1, 6], [4, 1, 3], [4, 1, 5], [6, 1, 3], [6, 1, 5],
+  [8, 2, 2], [8, 2, 4], [11, 1, 2], [11, 1, 4], [14, 3, 4], [14, 3, 2],
+  [18, 1, 2], [18, 1, 4], [19, 1, 2], [19, 1, 4], [20, 1, 5], [20, 1, 3], [22, 1, 3], [22, 1, 5],
+  [24, 2, 6], [24, 2, 4], [27, 1, 4], [27, 1, 6], [30, 1, 4], [30, 1, 6],
+  [32, 1, 7], [32, 1, 5], [33, 1, 5], [33, 1, 7], [34, 1, 5], [34, 1, 7], [36, 1, 6], [36, 1, 4], [38, 1, 5], [38, 1, 3],
+  [40, 2, 4], [40, 2, 2], [43, 1, 4], [43, 1, 2], [46, 3, 4], [46, 3, 2],
+  [50, 1, 2], [50, 1, 4], [51, 1, 5], [51, 1, 3], [52, 1, 4], [52, 1, 6], [54, 1, 3], [54, 1, 5],
+  [56, 2, 2], [56, 2, 4], [59, 1, 2], [59, 1, 4], [62, 1, 2], [62, 1, 4],
+];
+
 export function defaultProject() {
   const n = (step, len, deg) => ({ step, len, deg, vel: 0.85 });
-  // A little demo: minor loop i–VI–III–VII with a melody that uses degree numbers.
-  const lead = [
-    n(0, 2, 4), n(2, 2, 7), n(4, 4, 6), n(8, 2, 4), n(10, 2, 2), n(12, 4, 4),
-    n(16, 2, 5), n(18, 2, 7), n(20, 4, 9), n(24, 4, 7), n(28, 4, 5),
-    n(32, 2, 4), n(34, 2, 7), n(36, 4, 6), n(40, 2, 4), n(42, 2, 2), n(44, 4, 4),
-    n(48, 4, 6), n(52, 4, 8), n(56, 8, 7),
-  ];
-  const bassDegs = [0, 5, 2, 6];
+  const riff = LOVE_PARADE_RIFF.map(([s, l, d]) => n(s, l, d));
+  // off-beat trance bass on the root, like the original's off-beat bass hits
   const bass = [];
-  bassDegs.forEach((d, bar) => {
-    bass.push(n(bar * 16, 3, d), n(bar * 16 + 6, 2, d), n(bar * 16 + 10, 3, d), n(bar * 16 + 14, 2, d + 7));
-  });
+  for (let s = 2; s < 64; s += 4) bass.push(n(s, 2, 0));
   const rows = DRUM_KINDS.map(({ kind, name }) => ({ id: uid('d'), name, kind, vol: 0.9, pitch: 0, mute: false, solo: false, steps: [] }));
+  // drum pattern from the MIDI file's full section
   const pat = {
-    kick: 'x.........x.....x.........x...x.',
-    snare: '....x.......x.......x.......x...',
-    chat: 'x.x.x.x.x.x.x.x.x.x.x.x.x.xxx.x.',
-    ohat: '..............x...............x.',
-    clap: '....x.......x.......x.......x...',
+    kick: 'x...x...x...x...',
+    snare: '....x.......x...',
+    clap: '....X.......X...',
+    chat: 'xx..xx..xx..xx..',
+    ohat: '..x...x...x...x.',
   };
   for (const r of rows) {
-    if (pat[r.kind]) r.steps = beat(pat[r.kind].repeat(2));
-    if (r.kind === 'clap') r.vol = 0.5;
-    if (r.kind === 'chat') r.vol = 0.55;
+    if (pat[r.kind]) r.steps = beat(pat[r.kind].repeat(4));
+    if (r.kind === 'snare') r.vol = 0.45;
+    if (r.kind === 'clap') r.vol = 0.6;
+    if (r.kind === 'chat') r.vol = 0.4;
+    if (r.kind === 'ohat') r.vol = 0.45;
   }
   return {
     version: 1,
-    name: 'My first banger',
-    bpm: 100,
-    root: 9, // A
-    scale: 'minor',
+    name: 'Meet Her at the Love Parade (riff)',
+    bpm: 130,
+    root: 2, // D
+    scale: 'mixolydianFlat6',
+    noteMode: 'degrees', // 'degrees' = notes follow the scale; 'fixed' = notes keep their pitch (DAW style)
     bars: 4,
     swing: 0,
     showNoteNames: false,
     patches: builtinPatches(),
     drumParams: structuredClone(DRUM_PARAMS),
     tracks: [
-      newTrack('Lead', 'keys', 4, TRACK_COLORS[0], lead),
-      newTrack('Bass', 'sub808', 2, TRACK_COLORS[1], bass),
+      newTrack('Riff', 'stab', 4, TRACK_COLORS[0], riff),
+      newTrack('Bass', 'sawbass', 2, TRACK_COLORS[1], bass),
     ],
     chords: {
-      patch: 'pad', octave: 4, volume: 0.6, pan: 0, mute: false, solo: false,
+      patch: 'pad', octave: 3, volume: 0.45, pan: 0, mute: false, solo: false,
       style: 'block', slotSteps: 16, voiceLead: true,
-      slots: [{ deg: 0, type: 'triad' }, { deg: 5, type: 'triad' }, { deg: 2, type: 'triad' }, { deg: 6, type: 'triad' }],
+      slots: [0, 0, 0, 0].map(deg => ({ deg, type: 'triad' })),
     },
     drums: { volume: 0.9, rows },
   };
@@ -168,14 +179,31 @@ export function loadSaved() {
   return null;
 }
 
-// ---------- Scale swapping ----------
-// Same-size scales keep degree numbers untouched (that's the point: same loop, new flavor).
-// Different sizes: move each note to the nearest pitch in the new scale.
-export function changeScale(newScale) {
+// ---------- Key and scale changes ----------
+// Two behaviors, picked by project.noteMode:
+//  'degrees' (default): notes are scale degrees, so they follow the new key/scale. Same loop, new mood.
+//     Scales of a different size move each note to the nearest pitch (and remember the original).
+//  'fixed': notes keep their exact pitch, like the piano roll in most DAWs. After a change, notes that
+//     aren't in the new scale are stored as accidentals (alt = ±1) and drawn as out-of-scale.
+export function changeKey(newRoot, newScale) {
   const p = store.project;
   const oldSteps = scaleSteps(p.scale);
   const newSteps = scaleSteps(newScale);
-  if (oldSteps.length !== newSteps.length) {
+  if (p.noteMode === 'fixed') {
+    // move the root the short way round and compensate with the track octave, so no pitch changes
+    const raw = newRoot - p.root;
+    const wrapped = mod(raw + 6, 12) - 6;
+    const octShift = (raw - wrapped) / 12;
+    for (const t of p.tracks) {
+      t.octave -= octShift;
+      for (const note of t.notes) {
+        const rel = degToSemis(oldSteps, note.deg) + (note.alt || 0) - wrapped;
+        note.deg = semisToNearestDeg(newSteps, rel);
+        note.alt = rel - degToSemis(newSteps, note.deg);
+        delete note.src;
+      }
+    }
+  } else if (oldSteps.length !== newSteps.length) {
     for (const t of p.tracks) {
       for (const note of t.notes) {
         // Remember where the note came from, so going 7 -> 5 -> 7 notes gives the original melody back.
@@ -195,8 +223,22 @@ export function changeScale(newScale) {
   const oldH = scaleSteps(harmonyScaleId(p.scale)).length;
   const newH = scaleSteps(harmonyScaleId(newScale)).length;
   if (oldH !== newH) for (const s of p.chords.slots) if (s) s.deg = mod(s.deg, newH);
+  p.root = newRoot;
   p.scale = newScale;
   commit('all');
+}
+
+export const changeScale = newScale => changeKey(store.project.root, newScale);
+export const changeRoot = newRoot => changeKey(newRoot, store.project.scale);
+
+export function outOfScaleCount() {
+  return store.project.tracks.reduce((a, t) => a + t.notes.filter(n => n.alt).length, 0);
+}
+
+// Snap every out-of-scale note to the nearest scale note (what DAWs call "fold/snap to scale").
+export function snapToScale() {
+  for (const t of store.project.tracks) for (const n of t.notes) { n.alt = 0; delete n.src; }
+  commit('notes');
 }
 
 export function setBars(bars) {

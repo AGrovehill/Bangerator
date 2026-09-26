@@ -13,7 +13,7 @@ export const MAJOR = [0, 2, 4, 5, 7, 9, 11];
 // parent: 7-note scale used for chords when the scale itself has fewer notes.
 // family: whether the scale sounds 'major' (bright) or 'minor' (dark) when sitting on 1.
 export const SCALES = {
-  major:       { name: 'Major (Ionian)',      steps: [0, 2, 4, 5, 7, 9, 11], family: 'major', mood: 'Happy, bright, “everything is fine”.' },
+  major:       { name: 'Major (Ionian)',      steps: [0, 2, 4, 5, 7, 9, 11], family: 'major', mood: 'Bright and happy. The most common scale in pop.' },
   minor:       { name: 'Natural Minor (Aeolian)', steps: [0, 2, 3, 5, 7, 8, 10], family: 'minor', mood: 'Sad, serious, epic. The go-to for dark pop, trap and film.' },
   dorian:      { name: 'Dorian',              steps: [0, 2, 3, 5, 7, 9, 10], family: 'minor', mood: 'Minor but cool and hopeful. Funk, house, jazz, lo-fi.' },
   phrygian:    { name: 'Phrygian',            steps: [0, 1, 3, 5, 7, 8, 10], family: 'minor', mood: 'Dark and tense, the ♭2 feels threatening. Metal, drill, techno.' },
@@ -22,9 +22,10 @@ export const SCALES = {
   locrian:     { name: 'Locrian',             steps: [0, 1, 3, 5, 6, 8, 10], family: 'minor', mood: 'Unstable and weird. It never feels at home. Rare, but spooky.' },
   harmonicMinor: { name: 'Harmonic Minor',    steps: [0, 2, 3, 5, 7, 8, 11], family: 'minor', mood: 'Dramatic and a bit exotic. Classical, metal, dark trap.' },
   melodicMinor:  { name: 'Melodic Minor',     steps: [0, 2, 3, 5, 7, 9, 11], family: 'minor', mood: 'Smooth and jazzy, minor with a bright top.' },
+  mixolydianFlat6: { name: 'Mixolydian ♭6',   steps: [0, 2, 4, 5, 7, 8, 10], family: 'major', mood: 'Major at the bottom, minor at the top. Bittersweet and a bit melancholic.' },
   phrygianDominant: { name: 'Phrygian Dominant', steps: [0, 1, 4, 5, 7, 8, 10], family: 'major', mood: 'Middle-eastern and flamenco flavors. Very dramatic.' },
   hungarianMinor: { name: 'Hungarian Minor',  steps: [0, 2, 3, 6, 7, 8, 11], family: 'minor', mood: 'Gothic and mysterious, with two spicy gaps.' },
-  doubleHarmonic: { name: 'Double Harmonic',  steps: [0, 1, 4, 5, 7, 8, 11], family: 'major', mood: 'Snake-charmer exotic. Instantly recognizable.' },
+  doubleHarmonic: { name: 'Double Harmonic',  steps: [0, 1, 4, 5, 7, 8, 11], family: 'major', mood: 'Strongly Middle Eastern. Very distinctive.' },
   majorPent:   { name: 'Major Pentatonic',    steps: [0, 2, 4, 7, 9], parent: 'major', family: 'major', mood: 'Five safe notes, super happy. Hard to hit a wrong note.' },
   minorPent:   { name: 'Minor Pentatonic',    steps: [0, 3, 5, 7, 10], parent: 'minor', family: 'minor', mood: 'Five safe notes, cool and bluesy. The rock/hip-hop solo scale.' },
   blues:       { name: 'Blues',               steps: [0, 3, 5, 6, 7, 10], parent: 'minor', family: 'minor', mood: 'Minor pentatonic plus one “blue note” for grit.' },
@@ -33,7 +34,7 @@ export const SCALES = {
 
 // Handy order for the scale picker and the "next scale" button.
 export const SCALE_ORDER = ['major', 'minor', 'dorian', 'phrygian', 'lydian', 'mixolydian', 'locrian',
-  'harmonicMinor', 'melodicMinor', 'phrygianDominant', 'hungarianMinor', 'doubleHarmonic',
+  'harmonicMinor', 'melodicMinor', 'mixolydianFlat6', 'phrygianDominant', 'hungarianMinor', 'doubleHarmonic',
   'majorPent', 'minorPent', 'blues', 'wholeTone'];
 
 // Semitone offset of each 7-note mode from its parent major scale (for key signatures).
@@ -211,9 +212,9 @@ export function chordName(root, scaleId, deg, type = 'triad') {
 
 // Function in the key: the "home / away / tension" story (from major-key theory).
 export const FUNCTION_INFO = {
-  home: { label: 'Home', color: 'var(--fn-home)', help: 'Rest. Feels like sitting on your couch.' },
-  away: { label: 'Away', color: 'var(--fn-away)', help: 'Leaving home: going for a walk, a bit of movement.' },
-  tension: { label: 'Tension', color: 'var(--fn-tension)', help: 'Standing at the door. It really wants to go back home.' },
+  home: { label: 'Home', color: 'var(--fn-home)', help: 'Stable and resolved. The music could stop here.' },
+  away: { label: 'Away', color: 'var(--fn-away)', help: 'Moves away from home and creates motion.' },
+  tension: { label: 'Tension', color: 'var(--fn-tension)', help: 'Unstable. Strongly suggests that Home comes next.' },
 };
 // Pass `steps` (the harmony scale) so diminished chords always count as tension.
 export function chordFunction(deg, steps) {
@@ -228,23 +229,23 @@ export function chordFunction(deg, steps) {
 const NEXT = { 0: [3, 4, 5, 1], 1: [4, 6, 3], 2: [5, 3], 3: [4, 0, 1], 4: [0, 5], 5: [1, 3, 4], 6: [0, 2] };
 const NEXT_WHY = {
   '0>3': 'Home to Away, the most common first move.',
-  '0>4': 'Home to Tension. Big energy, it will want to come back.',
-  '0>5': 'Home to its sad twin (they share two notes).',
+  '0>4': 'Home to Tension. Creates a strong pull back home.',
+  '0>5': 'Home to vi, its minor relative (they share two notes).',
   '0>1': 'Home to a soft Away chord.',
   '1>4': 'The famous ii → V, a jazz favorite. Sets up home perfectly.',
-  '1>6': 'Away to a nervous tension chord.',
+  '1>6': 'Away to a tense diminished chord.',
   '1>3': 'Sideways to the other Away chord.',
-  '2>5': 'Down a 5th, a smooth step toward the sad home.',
+  '2>5': 'Down a 5th to vi, a smooth move.',
   '2>3': 'Leads into Away.',
   '3>4': 'Away → Tension, the classic build-up before landing.',
   '3>0': 'Away → Home, the “Amen” ending (plagal cadence).',
   '3>1': 'Stays in Away territory, gentle.',
-  '4>0': 'Tension → Home, THE resolution. Feels like coming home.',
-  '4>5': 'Fake-out! Expected home, landed on the sad twin (deceptive cadence).',
-  '5>1': 'Sad home → Away, down a 5th, very smooth.',
-  '5>3': 'Sad → hopeful Away, the pop move.',
-  '5>4': 'Sad → Tension, dramatic.',
-  '6>0': 'Leading-tone chord → Home, super strong pull.',
+  '4>0': 'Tension → Home, the strongest resolution (perfect cadence).',
+  '4>5': 'Expected to go home, goes to vi instead (deceptive cadence).',
+  '5>1': 'vi → ii, down a 5th, very smooth.',
+  '5>3': 'vi → IV, very common in pop.',
+  '5>4': 'vi → V, builds tension.',
+  '6>0': 'vii° → Home, a strong pull.',
   '6>2': 'Slides to the iii chord.',
 };
 
@@ -257,7 +258,7 @@ export function suggestNext(deg) {
 // ---------- Progressions library (degrees are 0-based on the 7-note harmony scale) ----------
 export const PROGRESSIONS = [
   { name: 'Pop Anthem', degs: [0, 4, 5, 3], family: 'major', help: 'I–V–vi–IV. Thousands of hits use it. Hopeful and singable.' },
-  { name: 'Sad Pop / Emo', degs: [5, 3, 0, 4], family: 'major', help: 'vi–IV–I–V. The same four chords starting on the sad one.' },
+  { name: 'Sad Pop / Emo', degs: [5, 3, 0, 4], family: 'major', help: 'vi–IV–I–V. The Pop Anthem chords, starting on the minor one.' },
   { name: '50s Doo-wop', degs: [0, 5, 3, 4], family: 'major', help: 'I–vi–IV–V. Old-school, sweet and nostalgic.' },
   { name: 'Three-Chord Rock', degs: [0, 3, 4, 3], family: 'major', help: 'I–IV–V–IV. The three most important chords.' },
   { name: 'Jazz Turnaround', degs: [1, 4, 0, 0], family: 'major', help: 'ii–V–I. Use 7th chords for instant jazz.' },

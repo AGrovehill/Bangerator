@@ -100,6 +100,10 @@ export class ScaleRoll {
       g.globalAlpha = clipped ? 0.4 : 0.35 + 0.65 * (note.vel ?? 0.85);
       roundRect(g, x, y, nw, nh, 4); g.fill();
       g.globalAlpha = 1;
+      if (note.alt) { // not in the scale: sits between rows, so flag it
+        g.save(); g.strokeStyle = '#ff6b6b'; g.lineWidth = 2; g.setLineDash([4, 3]);
+        roundRect(g, x + 1, y + 1, nw - 2, nh - 2, 4); g.stroke(); g.restore();
+      }
       g.fillStyle = 'rgba(0,0,0,0.25)';
       g.fillRect(x + nw - 4, y + 2, 2, nh - 4); // resize grip
       g.fillStyle = '#111';

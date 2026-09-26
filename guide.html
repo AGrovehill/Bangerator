@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Music Theory in Crayon</title>
+<title>Music Theory from Zero</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23ffd43b'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' font-family='sans-serif' font-weight='bold'%3E1%3C/text%3E%3C/svg%3E">
 <style>
   :root {
@@ -26,9 +26,9 @@
   p, li { color: #d6dae6; }
   b, strong { color: var(--text); }
   .lead { font-size: 18px; color: var(--muted); }
-  .crayon { background: var(--bg2); border-left: 5px solid var(--yellow); border-radius: 8px; padding: 12px 16px; margin: 16px 0; }
-  .crayon.green { border-color: var(--green); } .crayon.blue { border-color: var(--blue); } .crayon.orange { border-color: var(--orange); } .crayon.pink { border-color: var(--pink); }
-  .crayon .tag { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); display: block; margin-bottom: 2px; }
+  .box { background: var(--bg2); border-left: 5px solid var(--yellow); border-radius: 8px; padding: 12px 16px; margin: 16px 0; }
+  .box.green { border-color: var(--green); } .box.blue { border-color: var(--blue); } .box.orange { border-color: var(--orange); } .box.pink { border-color: var(--pink); }
+  .box .tag { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); display: block; margin-bottom: 2px; }
   .play { display: inline-flex; align-items: center; gap: 6px; background: var(--bg3); color: var(--text); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px 4px 8px; margin: 3px 4px 3px 0; cursor: pointer; font: inherit; font-size: 14px; }
   .play::before { content: "▶"; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; background: var(--green); color: #111; font-size: 10px; }
   .play:hover { border-color: var(--green); }
@@ -60,224 +60,230 @@
 <nav class="toc" id="toc"></nav>
 <main>
 
-<h1>Music Theory in Crayon</h1>
-<p class="lead">Everything you need to make music with Bangerator, explained like you’re five (but a very cool five). Press the green ▶ buttons to hear the examples.</p>
+<h1>Music Theory from Zero</h1>
+<p class="lead">This guide covers what you need to start writing music in Bangerator. It assumes no previous knowledge. Every term is explained the first time it appears, and the ▶ buttons play each example.</p>
 
-<div class="crayon"><span class="tag">The big idea</span>
-Most music apps make you think in note names like C, F♯, B♭. Bangerator uses <b>numbers</b> instead: <span class="num">1</span> is “home” and the other numbers are steps away from home. Numbers work the same in <i>every</i> key, so a tune you learn once works everywhere.</div>
+<div class="box"><span class="tag">The main idea</span>
+Most music software names notes with letters like C, F♯ or B♭. Bangerator numbers them instead. <span class="num">1</span> is the “home” note of your song, and the other numbers count up from it. A melody written in numbers works the same in every key, so you only have to learn it once.</div>
 
 <!-- ============================================================ -->
-<h2 id="sound"><span class="n">1</span>What is a note?</h2>
-<p>Sound is air wiggling. When something wiggles <b>fast</b>, we hear a <b>high</b> sound. When it wiggles <b>slow</b>, we hear a <b>low</b> sound. How high or low a sound is gets called its <b>pitch</b>.</p>
-<p>A <b>note</b> is just a sound with a steady pitch. A whistle, a sung “laaa”, a guitar string: those are notes. A hand clap isn’t really a note because it has no steady pitch. That’s why drums get their own grid in Bangerator.</p>
+<h2 id="sound"><span class="n">1</span>Notes and pitch</h2>
+<p>Sound is vibrating air. Fast vibration sounds <b>high</b> and slow vibration sounds <b>low</b>. How high or low a sound is called its <b>pitch</b>.</p>
+<p>A <b>note</b> is a sound with a steady, recognizable pitch, like a sung tone or a guitar string. Most drum sounds have no clear pitch, so Bangerator gives drums their own grid.</p>
 <button class="play" data-play="notes:48">Low note</button>
 <button class="play" data-play="notes:60">Middle note</button>
 <button class="play" data-play="notes:84">High note</button>
 
 <!-- ============================================================ -->
-<h2 id="twelve"><span class="n">2</span>The 12-step staircase</h2>
-<p>Western music uses <b>12 different notes</b>, and then they repeat. Think of a staircase with 12 steps. When you reach the top, you’re on the same “color” of step again, just one floor higher.</p>
+<h2 id="twelve"><span class="n">2</span>The 12 notes</h2>
+<p>Western music uses <b>12 notes</b> that repeat over and over, each set higher than the last. On a piano, the 12 notes are the white and black keys together, and the pattern of keys repeats across the keyboard.</p>
 <div class="kbd" data-kbd="0,1,2,3,4,5,6,7,8,9,10,11" data-root="0" data-labels="names"></div>
-<p>On a piano, the 12 steps are the white <i>and</i> black keys together. Going from one key to the very next one (white or black) is the smallest step. We call it a <b>half step</b>.</p>
-<div class="crayon green"><span class="tag">Crayon version</span>
-<b>Octave</b> = climbing all 12 steps. The note at the top sounds like the bottom one, just “smaller”. A child and an adult singing the same song together are an octave apart.</div>
-<button class="play" data-play="notes:60,61,62,63,64,65,66,67,68,69,70,71,72" data-gap="0.18">Climb all 12 steps</button>
-<button class="play" data-play="chord:60,72">Same note, one octave apart</button>
+<p>The distance from one key to the very next one (white or black) is the smallest step in this system. It’s called a <b>half step</b> (or semitone).</p>
+<p>After 12 half steps you reach the same note again, only higher. This distance is an <b>octave</b>. Two notes an octave apart sound so similar that they get the same name. When a man and a woman sing the same melody together, they’re often an octave apart.</p>
+<button class="play" data-play="notes:60,61,62,63,64,65,66,67,68,69,70,71,72" data-gap="0.18">All 12 notes, then the octave</button>
+<button class="play" data-play="chord:60,72">Two notes an octave apart</button>
 
 <!-- ============================================================ -->
 <h2 id="steps"><span class="n">3</span>Half steps and whole steps</h2>
 <ul>
-  <li><b>Half step (H)</b> = move 1 key. Tiny and squeezy.</li>
-  <li><b>Whole step (W)</b> = move 2 keys (two half steps). A normal-sized step.</li>
+  <li><b>Half step (H):</b> move 1 key.</li>
+  <li><b>Whole step (W):</b> move 2 keys (two half steps).</li>
 </ul>
 <button class="play" data-play="notes:60,61" data-gap="0.4">Half step</button>
 <button class="play" data-play="notes:60,62" data-gap="0.4">Whole step</button>
-<p>Almost all of music is built out of these two sizes.</p>
+<p>These two step sizes are the building blocks of scales.</p>
 
 <!-- ============================================================ -->
-<h2 id="scales"><span class="n">4</span>Scales are recipes</h2>
-<p>You don’t use all 12 notes at once, because that sounds messy. A <b>scale</b> is a <b>recipe that picks 7 of the 12 steps</b> (sometimes 5 or 6). The recipe is a list of step sizes.</p>
-<p>The <b>Major scale</b> recipe is:</p>
+<h2 id="scales"><span class="n">4</span>Scales</h2>
+<p>Playing all 12 notes freely tends to sound random. A <b>scale</b> is a chosen set of notes, usually 7 of the 12, that sound good together. A scale is defined by the pattern of steps between its notes.</p>
+<p>The pattern for the <b>major scale</b> is:</p>
 <p style="font-size:22px;font-weight:800;letter-spacing:.1em;color:var(--yellow)">W&nbsp; W&nbsp; H&nbsp; W&nbsp; W&nbsp; W&nbsp; H</p>
 <div class="kbd" data-kbd="0,2,4,5,7,9,11" data-root="0" data-labels="degrees"></div>
 <button class="play" data-play="scale:major:60">Major scale</button>
-<p>Start on any key, follow the recipe, and you get a major scale. It always sounds “major”, just higher or lower.</p>
-<button class="play" data-play="scale:major:62">Major starting on D</button>
-<button class="play" data-play="scale:major:67">Major starting on G</button>
+<p>You can start the pattern on any of the 12 notes. The result is always a major scale, just higher or lower.</p>
+<button class="play" data-play="scale:major:62">Major, starting on D</button>
+<button class="play" data-play="scale:major:67">Major, starting on G</button>
 
 <!-- ============================================================ -->
-<h2 id="numbers"><span class="n">5</span>Why numbers? (Scale degrees)</h2>
-<p>Each note in a scale gets a number: the first note is <span class="num">1</span>, the next is <span class="num">2</span>, all the way to <span class="num">7</span>. After <span class="num">7</span> comes <span class="num">1</span> again, one octave up. These numbers are called <b>scale degrees</b>.</p>
-<div class="crayon"><span class="tag">Crayon version</span>
-<span class="num">1</span> is your <b>house</b>. The other numbers are places in your neighborhood. A song is a walk around the neighborhood. Most songs end back at the house, because that feels finished.</div>
-<p>The <b>key</b> tells you <i>where</i> the house is (which of the 12 notes is <span class="num">1</span>). The <b>scale</b> tells you <i>what the neighborhood looks like</i>.</p>
-<p>A melody written in numbers, like <span class="num">1 1 5 5 6 6 5</span>, sounds like the same tune in every key. That’s “Twinkle Twinkle”, by the way:</p>
+<h2 id="numbers"><span class="n">5</span>Scale degrees: why Bangerator uses numbers</h2>
+<p>The notes of a scale are numbered in order: the first note is <span class="num">1</span>, the second is <span class="num">2</span>, up to <span class="num">7</span>. After <span class="num">7</span> the scale starts again at <span class="num">1</span>, an octave higher. These numbers are called <b>scale degrees</b>.</p>
+<p><span class="num">1</span> is the <b>tonic</b>, or home note. Melodies tend to feel finished when they end on it and unfinished when they stop anywhere else.</p>
+<p>Two settings decide what the numbers sound like:</p>
+<ul>
+<li>The <b>key</b> decides which of the 12 notes is <span class="num">1</span>.</li>
+<li>The <b>scale</b> decides which notes the other numbers point to.</li>
+</ul>
+<p>Because of this, a melody written as numbers sounds like the same tune in any key. <span class="num">1 1 5 5 6 6 5</span> is the start of “Twinkle Twinkle Little Star”:</p>
 <button class="play" data-play="degrees:major:60:0,0,4,4,5,5,4">1 1 5 5 6 6 5 in C</button>
-<button class="play" data-play="degrees:major:66:0,0,4,4,5,5,4">…the same numbers in F♯</button>
-<p>In Bangerator every row on the grid is a number, not a note name. Change the key and your whole song moves with it, nothing breaks.</p>
-<h3>Special names for some numbers</h3>
+<button class="play" data-play="degrees:major:66:0,0,4,4,5,5,4">The same numbers in F♯</button>
+<p>Every row in Bangerator’s grid is a scale degree. When you change the key, the whole song moves with it and nothing needs rewriting.</p>
+<div class="box green"><span class="tag">Try it with the demo</span>
+The demo song is the main riff of “Meet Her at the Love Parade” (Da Hool, 1997). Its scale is <b>D Mixolydian ♭6</b>. It’s two voices a third apart: the top voice moves around <span class="num">7 6 5</span> and the lower one around <span class="num">5 4 3</span>, all over a single D chord. Play it and step through the scales with the ◀ ▶ buttons. The riff keeps its shape because it’s stored as numbers, but every scale gives it a different mood: <b>Major</b> sounds bright, <b>Minor</b> and <b>Dorian</b> sound dark, <b>Harmonic Minor</b> sounds dramatic.</div>
+<h3>Why most music software doesn’t do this</h3>
+<p>Most DAWs (FL Studio, Ableton and so on) store notes as fixed pitches. They can highlight the scale in the piano roll, but when you change the scale your notes stay exactly where they were. Notes that aren’t in the new scale now clash, and you have to find and move each one by hand.</p>
+<p>Bangerator can behave that way too, so you can hear the difference. Above the grid, set <b>“When the scale changes, notes…”</b> to <b>keep their pitch (DAW)</b> and change the scale. The riff doesn’t move, the out-of-scale notes get a red dashed outline, and a counter shows how many there are. <b>Snap to scale</b> moves each one to its nearest scale note, which is what DAWs offer, but that rarely sounds as intended. Switch back to <b>follow the scale</b> and a scale change moves every note to the right place for you.</p>
+<h3>Degrees with their own names</h3>
 <table>
-<tr><th>Degree</th><th>Fancy name</th><th>Crayon meaning</th></tr>
-<tr><td><span class="num">1</span></td><td>Tonic</td><td>Home. Feels finished and restful.</td></tr>
-<tr><td><span class="num">3</span></td><td>Mediant</td><td>Decides happy or sad (see next chapter).</td></tr>
-<tr><td><span class="num">4</span></td><td>Subdominant</td><td>“Going out”. A step away from home.</td></tr>
-<tr><td><span class="num">5</span></td><td>Dominant</td><td>The strongest “come back home!” pull, after 1 the most important note.</td></tr>
-<tr><td><span class="num">7</span></td><td>Leading tone</td><td>One tiny half step below home, so it really wants to go up to <span class="num">1</span>.</td></tr>
+<tr><th>Degree</th><th>Name</th><th>What it does</th></tr>
+<tr><td><span class="num">1</span></td><td>Tonic</td><td>Home. Sounds stable and resolved.</td></tr>
+<tr><td><span class="num">3</span></td><td>Mediant</td><td>Decides whether the scale sounds major or minor (next chapter).</td></tr>
+<tr><td><span class="num">4</span></td><td>Subdominant</td><td>Moves away from home.</td></tr>
+<tr><td><span class="num">5</span></td><td>Dominant</td><td>The second most important note. It pulls strongly back to 1.</td></tr>
+<tr><td><span class="num">7</span></td><td>Leading tone</td><td>Only a half step below 1, so it pushes strongly upward to it.</td></tr>
 </table>
-<button class="play" data-play="degrees:major:60:0,1,2,3,4,5,6">Stop on 7…</button>
-<button class="play" data-play="degrees:major:60:6,7">…and resolve to 1. Ahh.</button>
+<button class="play" data-play="degrees:major:60:0,1,2,3,4,5,6">Stop on 7 (unfinished)</button>
+<button class="play" data-play="degrees:major:60:6,7">7 resolving to 1</button>
 
 <!-- ============================================================ -->
-<h2 id="majorminor"><span class="n">6</span>Happy and sad: major and minor</h2>
-<p>The <b>Natural Minor</b> recipe is <b>W H W W H W W</b>. Compared to major, three notes are one half step lower: <span class="num">♭3</span>, <span class="num">♭6</span> and <span class="num">♭7</span>. The little ♭ (“flat”) means “one half step lower than in major”. ♯ (“sharp”) means one half step higher.</p>
-<button class="play" data-play="scale:major:60">Major (happy)</button>
-<button class="play" data-play="scale:minor:60">Minor (sad)</button>
-<div class="crayon blue"><span class="tag">Crayon version</span>
-The <span class="num">3</span> is the mood switch. A big 3 (major 3rd) sounds like a smile. A small <span class="num">♭3</span> (minor 3rd) sounds like a frown. Swap just that one note and the mood flips.</div>
-<p>In Bangerator, the small grey hint next to each row number (like <code>♭3</code>) tells you how that note compares to the major scale.</p>
+<h2 id="majorminor"><span class="n">6</span>Major and minor</h2>
+<p>The <b>natural minor scale</b> uses the pattern <b>W H W W H W W</b>. Compared with major, three of its notes are a half step lower: <span class="num">♭3</span>, <span class="num">♭6</span> and <span class="num">♭7</span>. The symbol ♭ (<b>flat</b>) means “a half step lower than in the major scale”. ♯ (<b>sharp</b>) means “a half step higher”.</p>
+<button class="play" data-play="scale:major:60">Major</button>
+<button class="play" data-play="scale:minor:60">Minor</button>
+<p>Major usually sounds bright or happy, and minor usually sounds darker or sadder. The biggest cause of that difference is the third degree: a <span class="num">3</span> sounds major and a <span class="num">♭3</span> sounds minor.</p>
+<p>In Bangerator, the small grey label next to each row number (for example <code>♭3</code>) shows how that note compares with the major scale.</p>
 
 <!-- ============================================================ -->
-<h2 id="modes"><span class="n">7</span>Modes: the mood ladder</h2>
-<p>Here’s a magic trick. Take the white keys of a piano, but decide that a different key is “home”. You get a new scale with a new mood. These are the <b>modes</b>. Bangerator has them all, and the sidebar has <b>☀ Brighter</b> and <b>☾ Darker</b> buttons to climb the ladder:</p>
+<h2 id="modes"><span class="n">7</span>Modes</h2>
+<p>If you take the notes of a major scale but treat a different note as home, you get a new scale with a different character. These are called <b>modes</b>. Ordered from brightest to darkest:</p>
 <div class="ladder" id="ladder"></div>
-<p>Every mode changes just <b>one note</b> from its neighbor on the ladder. That’s why swapping scales on the same loop in Bangerator works so well: most of your notes stay put, and one or two shift to change the color.</p>
-<div class="crayon green"><span class="tag">Try this in Bangerator</span>
-Make a loop in <b>Minor</b>. Press ☀ to go to <b>Dorian</b>: the <span class="num">6</span> gets brighter and it suddenly sounds funky. Press ☾ to go to <b>Phrygian</b>: the <span class="num">2</span> gets darker and it sounds like a villain entering.</div>
-<h3>Some other flavors</h3>
+<p>Each mode differs from its neighbor in the list by only <b>one note</b>. That’s why swapping scales on an existing loop works well: most notes stay the same and one or two change the mood. The <b>☀ Brighter</b> and <b>☾ Darker</b> buttons in the sidebar move through this list.</p>
+<div class="box green"><span class="tag">Try it</span>
+Write a loop in <b>Minor</b>. Press ☀ to switch to <b>Dorian</b>: the <span class="num">6</span> goes up a half step and the loop sounds lighter and funkier. Press ☾ twice to reach <b>Phrygian</b>: the <span class="num">2</span> goes down a half step and it sounds darker and more tense.</div>
+<h3>Other scales in Bangerator</h3>
 <table>
-<tr><th>Scale</th><th>What’s special</th><th>Sounds like</th></tr>
-<tr><td>Harmonic Minor</td><td>Minor with a raised <span class="num">7</span></td><td>Dramatic, classical, a bit “ancient”</td></tr>
-<tr><td>Melodic Minor</td><td>Minor with raised <span class="num">6</span> and <span class="num">7</span></td><td>Smooth jazz minor</td></tr>
-<tr><td>Phrygian Dominant</td><td>Phrygian with a major <span class="num">3</span></td><td>Flamenco, middle-eastern</td></tr>
-<tr><td>Whole Tone</td><td>Only whole steps (6 notes)</td><td>A dream sequence, floaty and unresolved</td></tr>
+<tr><th>Scale</th><th>What’s different</th><th>Typical sound</th></tr>
+<tr><td>Harmonic Minor</td><td>Minor with a raised <span class="num">7</span></td><td>Dramatic, classical</td></tr>
+<tr><td>Melodic Minor</td><td>Minor with raised <span class="num">6</span> and <span class="num">7</span></td><td>Smooth, jazzy</td></tr>
+<tr><td>Phrygian Dominant</td><td>Phrygian with a major <span class="num">3</span></td><td>Flamenco, Middle Eastern</td></tr>
+<tr><td>Whole Tone</td><td>Only whole steps (6 notes)</td><td>Floating, unresolved, dreamlike</td></tr>
 </table>
 <button class="play" data-play="scale:harmonicMinor:60">Harmonic Minor</button>
 <button class="play" data-play="scale:phrygianDominant:60">Phrygian Dominant</button>
 <button class="play" data-play="scale:wholeTone:60">Whole Tone</button>
 
 <!-- ============================================================ -->
-<h2 id="penta"><span class="n">8</span>Pentatonic: the “can’t go wrong” scales</h2>
-<p><b>Penta</b> means five. A pentatonic scale leaves out the two “spiciest” notes, the ones that can clash. What’s left is 5 notes that all sound nice together, in any order.</p>
+<h2 id="penta"><span class="n">8</span>Pentatonic and blues scales</h2>
+<p>A <b>pentatonic</b> scale has five notes. It leaves out the two notes of the major or minor scale that most easily clash with others, so almost any combination of the remaining notes sounds fine.</p>
 <ul>
-<li><b>Major pentatonic:</b> 1 2 3 5 6. Happy, folky, pop.</li>
-<li><b>Minor pentatonic:</b> 1 ♭3 4 5 ♭7. Rock solos, hip-hop hooks, blues.</li>
-<li><b>Blues:</b> minor pentatonic plus the “blue note” ♭5 (in Bangerator it shows up as ♯4). Gritty.</li>
+<li><b>Major pentatonic:</b> 1 2 3 5 6. Bright, common in pop and folk.</li>
+<li><b>Minor pentatonic:</b> 1 ♭3 4 5 ♭7. Common in rock, hip-hop and blues.</li>
+<li><b>Blues:</b> minor pentatonic plus one extra note between 4 and 5 (shown in Bangerator as ♯4).</li>
 </ul>
 <button class="play" data-play="scale:majorPent:60">Major pentatonic</button>
 <button class="play" data-play="scale:minorPent:60">Minor pentatonic</button>
 <button class="play" data-play="scale:blues:60">Blues</button>
-<div class="crayon"><span class="tag">Beginner tip</span>
-If a melody isn’t working, switch to a pentatonic scale. Bangerator moves each note to the nearest pentatonic note. Often the wrong-sounding note just disappears.</div>
+<div class="box"><span class="tag">Tip</span>
+If a melody has a note that sounds wrong, try switching to a pentatonic scale. Bangerator moves every note to the nearest pentatonic note, which often removes the clash. Switching back restores your original notes.</div>
 
 <!-- ============================================================ -->
-<h2 id="chords"><span class="n">9</span>Chords: stacking every other number</h2>
-<p>A <b>chord</b> is several notes played at the same time. The easy recipe: pick a number, <b>skip one, take one, skip one, take one</b>.</p>
-<p>Start on <span class="num">1</span> → take <span class="num">1</span>, <span class="num">3</span>, <span class="num">5</span>. That’s the <b>1 chord</b>. Start on <span class="num">2</span> → <span class="num">2</span>, <span class="num">4</span>, <span class="num">6</span>. That’s the <b>2 chord</b>. And so on. A three-note chord like this is called a <b>triad</b>.</p>
-<button class="play" data-play="degchord:major:60:0">The 1 chord (1-3-5)</button>
-<button class="play" data-play="degchord:major:60:1">The 2 chord (2-4-6)</button>
-<button class="play" data-play="degchord:major:60:4">The 5 chord (5-7-2)</button>
-<h3>Chord flavors</h3>
+<h2 id="chords"><span class="n">9</span>Chords</h2>
+<p>A <b>chord</b> is several notes played at the same time. The standard way to build one from a scale is to take every other note: start on a degree, skip one, take one, skip one, take one.</p>
+<p>Starting on <span class="num">1</span> gives <span class="num">1</span>-<span class="num">3</span>-<span class="num">5</span>. Starting on <span class="num">2</span> gives <span class="num">2</span>-<span class="num">4</span>-<span class="num">6</span>, and so on. A three-note chord built this way is a <b>triad</b>. The note the chord is built on is its <b>root</b>.</p>
+<button class="play" data-play="degchord:major:60:0">Chord on 1 (1-3-5)</button>
+<button class="play" data-play="degchord:major:60:1">Chord on 2 (2-4-6)</button>
+<button class="play" data-play="degchord:major:60:4">Chord on 5 (5-7-2)</button>
+<h3>Chord types</h3>
 <table>
-<tr><th>Type</th><th>Crayon sound</th><th>Symbol</th><th></th></tr>
-<tr><td>Major</td><td>Happy, stable</td><td>C, F, G…</td><td><button class="play" data-play="chord:60,64,67">hear</button></td></tr>
-<tr><td>Minor</td><td>Sad, soft</td><td>Am, Dm…</td><td><button class="play" data-play="chord:60,63,67">hear</button></td></tr>
-<tr><td>Diminished</td><td>Tense, spooky, unstable</td><td>B°</td><td><button class="play" data-play="chord:60,63,66">hear</button></td></tr>
-<tr><td>Augmented</td><td>Weird, floaty, “what just happened?”</td><td>C+</td><td><button class="play" data-play="chord:60,64,68">hear</button></td></tr>
-<tr><td>sus2 / sus4</td><td>Open, hanging in the air, neither happy nor sad</td><td>Csus2, Csus4</td><td><button class="play" data-play="chord:60,62,67">sus2</button><button class="play" data-play="chord:60,65,67">sus4</button></td></tr>
-<tr><td>7th</td><td>One more note on top (skip-take again). Richer, jazzier.</td><td>Cmaj7, G7, Am7</td><td><button class="play" data-play="chord:60,64,67,71">maj7</button><button class="play" data-play="chord:55,59,62,65">7</button></td></tr>
-<tr><td>Power chord</td><td>Just 1 and 5, neither happy nor sad. Rock and EDM.</td><td>C5</td><td><button class="play" data-play="chord:48,55,60">hear</button></td></tr>
+<tr><th>Type</th><th>Sound</th><th>Written as</th><th></th></tr>
+<tr><td>Major</td><td>Bright, stable</td><td>C, F, G</td><td><button class="play" data-play="chord:60,64,67">hear</button></td></tr>
+<tr><td>Minor</td><td>Darker, softer</td><td>Am, Dm</td><td><button class="play" data-play="chord:60,63,67">hear</button></td></tr>
+<tr><td>Diminished</td><td>Tense, unstable</td><td>B°</td><td><button class="play" data-play="chord:60,63,66">hear</button></td></tr>
+<tr><td>Augmented</td><td>Strange, unresolved</td><td>C+</td><td><button class="play" data-play="chord:60,64,68">hear</button></td></tr>
+<tr><td>sus2 / sus4</td><td>Open, neither major nor minor</td><td>Csus2, Csus4</td><td><button class="play" data-play="chord:60,62,67">sus2</button><button class="play" data-play="chord:60,65,67">sus4</button></td></tr>
+<tr><td>7th</td><td>A triad with one more note stacked on top. Fuller, jazzier.</td><td>Cmaj7, G7, Am7</td><td><button class="play" data-play="chord:60,64,67,71">maj7</button><button class="play" data-play="chord:55,59,62,65">7</button></td></tr>
+<tr><td>Power chord</td><td>Only the root and 5th. Neutral, common in rock and EDM.</td><td>C5</td><td><button class="play" data-play="chord:48,55,60">hear</button></td></tr>
 </table>
-<div class="crayon blue"><span class="tag">The cool part</span>
-You don’t choose which chord is major or minor. <b>The scale decides.</b> In the major scale, stacking gives: 1 major, 2 minor, 3 minor, 4 major, 5 major, 6 minor, 7 diminished. Change the scale and the chord flavors change by themselves. That’s why swapping scales changes the whole vibe.</div>
+<div class="box blue"><span class="tag">Important</span>
+You don’t choose whether each chord is major or minor. The scale decides. In the major scale the chords come out as: 1 major, 2 minor, 3 minor, 4 major, 5 major, 6 minor, 7 diminished. When you change scale, the chord types change with it, which is a big part of why the whole song changes mood.</div>
 
 <!-- ============================================================ -->
-<h2 id="roman"><span class="n">10</span>Roman numerals: chord numbers</h2>
-<p>Musicians write chord numbers with Roman numerals so they don’t mix them up with melody numbers:</p>
+<h2 id="roman"><span class="n">10</span>Roman numerals</h2>
+<p>Chords are numbered with Roman numerals so they aren’t confused with melody degrees:</p>
 <table>
 <tr><th>1</th><th>2</th><th>3</th><th>4</th><th>5</th><th>6</th><th>7</th></tr>
 <tr><td>I</td><td>II</td><td>III</td><td>IV</td><td>V</td><td>VI</td><td>VII</td></tr>
 </table>
 <ul>
-<li><b>BIG letters</b> (IV) = major chord (happy).</li>
-<li><b>small letters</b> (vi) = minor chord (sad).</li>
-<li><b>°</b> (vii°) = diminished (spooky).</li>
-<li><b>♭</b> in front (♭VII) = the chord’s root is a half step lower than in the major scale.</li>
+<li><b>Uppercase</b> (IV) means a major chord.</li>
+<li><b>Lowercase</b> (vi) means a minor chord.</li>
+<li><b>°</b> (vii°) means diminished.</li>
+<li><b>♭</b> in front (♭VII) means the chord’s root is a half step lower than in the major scale.</li>
 </ul>
-<p>So in major the chords are: <b>I ii iii IV V vi vii°</b>. In natural minor: <b>i ii° ♭III iv v ♭VI ♭VII</b>.</p>
-<p>When somebody says “it’s a I–V–vi–IV song”, you now know exactly what to play in <i>any</i> key. Bangerator shows these numerals on every chord.</p>
+<p>The chords of the major scale are <b>I ii iii IV V vi vii°</b>. The chords of natural minor are <b>i ii° ♭III iv v ♭VI ♭VII</b>.</p>
+<p>Musicians describe songs this way. “I–V–vi–IV” tells you exactly which chords to play in any key. Bangerator shows the numeral on every chord.</p>
 
 <!-- ============================================================ -->
-<h2 id="function"><span class="n">11</span>Home, Away, Tension</h2>
-<p>Chords have jobs. Bangerator colors them by job:</p>
+<h2 id="function"><span class="n">11</span>Home, Away and Tension</h2>
+<p>Chords tend to play one of three roles. Bangerator colors each chord by its role:</p>
 <div class="row" style="margin:10px 0">
   <span class="pill home">Home</span> <span class="pill away">Away</span> <span class="pill tension">Tension</span>
 </div>
 <table>
-<tr><th>Job</th><th>Chords</th><th>Crayon feeling</th></tr>
-<tr><td><span class="pill home">Home</span></td><td>I (and its cousins iii, vi)</td><td>Sitting on the couch. Relaxed, done.</td></tr>
-<tr><td><span class="pill away">Away</span></td><td>IV, ii</td><td>Going out for a walk. Something is happening.</td></tr>
-<tr><td><span class="pill tension">Tension</span></td><td>V, vii°</td><td>Standing at the front door, keys in hand. You REALLY want to go inside.</td></tr>
+<tr><th>Role</th><th>Chords</th><th>Effect</th></tr>
+<tr><td><span class="pill home">Home</span></td><td>I, and to a lesser degree iii and vi</td><td>Stable. The music could stop here.</td></tr>
+<tr><td><span class="pill away">Away</span></td><td>IV, ii</td><td>Moves away from home and creates motion.</td></tr>
+<tr><td><span class="pill tension">Tension</span></td><td>V, vii°</td><td>Unstable. Strongly suggests that home comes next.</td></tr>
 </table>
-<p>The basic story of most songs: <b>Home → Away → Tension → Home</b>.</p>
-<button class="play" data-play="prog:major:60:0,3,4,0">I → IV → V → I (the whole story)</button>
-<h3>Cadences (musical punctuation)</h3>
+<p>A very common pattern is <b>Home → Away → Tension → Home</b>.</p>
+<button class="play" data-play="prog:major:60:0,3,4,0">I → IV → V → I</button>
+<h3>Cadences</h3>
+<p>A <b>cadence</b> is a pair of chords that ends a musical phrase, a bit like punctuation ends a sentence.</p>
 <table>
-<tr><th>Name</th><th>Chords</th><th>Like…</th><th></th></tr>
-<tr><td>Perfect</td><td>V → I</td><td>A full stop. “The end.”</td><td><button class="play" data-play="prog:major:60:4,0">hear</button></td></tr>
-<tr><td>Plagal</td><td>IV → I</td><td>“Amen.” Soft, church-y ending.</td><td><button class="play" data-play="prog:major:60:3,0">hear</button></td></tr>
-<tr><td>Half</td><td>… → V</td><td>A comma or question mark, it waits for more.</td><td><button class="play" data-play="prog:major:60:0,4">hear</button></td></tr>
-<tr><td>Deceptive</td><td>V → vi</td><td>A plot twist! You expected home, got the sad cousin.</td><td><button class="play" data-play="prog:major:60:4,5">hear</button></td></tr>
+<tr><th>Name</th><th>Chords</th><th>Effect</th><th></th></tr>
+<tr><td>Perfect</td><td>V → I</td><td>A clear, final ending.</td><td><button class="play" data-play="prog:major:60:4,0">hear</button></td></tr>
+<tr><td>Plagal</td><td>IV → I</td><td>A softer ending (the “amen” at the end of hymns).</td><td><button class="play" data-play="prog:major:60:3,0">hear</button></td></tr>
+<tr><td>Half</td><td>… → V</td><td>Pauses on tension, so more music is expected.</td><td><button class="play" data-play="prog:major:60:0,4">hear</button></td></tr>
+<tr><td>Deceptive</td><td>V → vi</td><td>Expected to resolve home but goes to vi instead.</td><td><button class="play" data-play="prog:major:60:4,5">hear</button></td></tr>
 </table>
-<p>The <b>“What comes next?”</b> box in Bangerator uses these rules to suggest your next chord.</p>
+<p>The <b>What comes next?</b> panel in Bangerator uses these patterns to suggest the next chord.</p>
 
 <!-- ============================================================ -->
-<h2 id="progressions"><span class="n">12</span>Chord progressions and loops</h2>
-<p>A <b>chord progression</b> is a list of chords in order. In electronic music and pop, it’s usually a loop of 4 chords, one per bar, over and over.</p>
-<button class="play" data-play="prog:major:60:0,4,5,3">I–V–vi–IV “Pop anthem”</button>
-<button class="play" data-play="prog:minor:57:0,5,2,6">i–VI–III–VII “Epic minor”</button>
-<button class="play" data-play="prog:major:60:1,4,0,0">ii–V–I “Jazz”</button>
-<button class="play" data-play="prog:harmonicMinor:57:0,6,5,4">i–VII–VI–V “Andalusian”</button>
-<p>Bangerator’s <b>Famous progressions</b> list adds any of these with one click. Because they’re stored as numbers, you can then swap the scale and hear the same progression in a new mood.</p>
-<div class="crayon orange"><span class="tag">Neat trick</span>
-I–V–vi–IV and vi–IV–I–V are the <i>same four chords</i>, just starting at a different point in the loop. Starting on the sad one (vi) makes the whole thing feel sad. Where you start the loop matters!</div>
+<h2 id="progressions"><span class="n">12</span>Chord progressions</h2>
+<p>A <b>chord progression</b> is a sequence of chords. In pop and electronic music it’s often four chords, one per bar, repeated as a loop.</p>
+<button class="play" data-play="prog:major:60:0,4,5,3">I–V–vi–IV</button>
+<button class="play" data-play="prog:minor:57:0,5,2,6">i–VI–III–VII</button>
+<button class="play" data-play="prog:major:60:1,4,0,0">ii–V–I</button>
+<button class="play" data-play="prog:harmonicMinor:57:0,6,5,4">i–VII–VI–V</button>
+<p>The <b>Famous progressions</b> list in the sidebar adds any of these with one click. They’re stored as numbers, so you can change the scale afterwards and hear the same progression with a different mood.</p>
+<div class="box orange"><span class="tag">Worth knowing</span>
+I–V–vi–IV and vi–IV–I–V use the same four chords, only starting at a different point in the loop. Starting on the minor chord (vi) makes the loop sound sadder. Where a loop starts affects how it feels.</div>
 
 <!-- ============================================================ -->
 <h2 id="circle"><span class="n">13</span>The circle of fifths</h2>
-<p>The circle of fifths is a <b>map of the neighborhood of keys</b>. All 12 keys sit on a clock. Going one step clockwise moves you up 5 scale steps (a “fifth”, 7 half steps).</p>
-<div class="crayon"><span class="tag">Crayon version</span>
-Keys that are <b>next to each other</b> on the circle are <b>best friends</b>: they share 6 of their 7 notes. Keys on <b>opposite sides</b> are strangers and share very few notes.</div>
-<h3>How to read the circle in Bangerator</h3>
+<p>The circle of fifths arranges the 12 keys around a circle. Each step clockwise moves up by a <b>fifth</b> (7 half steps, the distance from degree 1 to degree 5).</p>
+<p>The useful part: <b>keys next to each other share 6 of their 7 notes</b>, while keys on opposite sides share very few. Neighboring keys and chords sound good together.</p>
+<h3>Reading the circle in Bangerator</h3>
 <ul>
-<li><b>Outer ring:</b> major chords/keys. <b>Middle ring:</b> minor. <b>Inner ring:</b> diminished.</li>
-<li>The chords in your current key light up, colored by their job (Home, Away, Tension), with their Roman numeral. The <b>white outline</b> is home (I).</li>
-<li>In major, the lit chords sit together in a neat wedge: <b>IV</b> is on the left of I, <b>V</b> on the right, and the minor chords right below them.</li>
-<li>The little <b>dots on the rim</b> show your scale’s notes. For major they make one unbroken arc of 7.</li>
-<li>Click any key to move your song there. Same numbers, new key!</li>
+<li><b>Outer ring:</b> major chords. <b>Middle ring:</b> minor chords. <b>Inner ring:</b> diminished chords.</li>
+<li>The chords that belong to your current key are colored by role and labeled with their Roman numeral. Home (I) has a white outline.</li>
+<li>In a major key these chords sit together in one block: IV to the left of I, V to the right, and the related minor chords below them.</li>
+<li>The dots on the outer edge show the notes of your scale.</li>
+<li>Clicking a key moves your song to that key. Your numbers stay the same.</li>
 </ul>
 <h3>Relative major and minor</h3>
-<p>Each major key has a <b>minor twin</b> directly below it on the circle (C major ↔ A minor). They use the <b>exact same notes</b>, just with a different home. That’s why A minor is <span class="num">6</span> of C major.</p>
-<h3>Key signatures (the ♯ and ♭ count)</h3>
-<p>Going clockwise adds a ♯ to the key, going counter-clockwise adds a ♭. C major has none, G has 1♯, D has 2♯… F has 1♭, B♭ has 2♭… The center of the circle shows the count for your key.</p>
-<h3>Why fifths?</h3>
-<p>The <span class="num">5</span> is the strongest pull back to <span class="num">1</span>. Many songs move around the circle (counter-clockwise, falling by fifths): vi → ii → V → I. Each chord is the “V” of the next one, like dominoes.</p>
-<button class="play" data-play="prog:major:60:5,1,4,0">vi → ii → V → I, dominoes</button>
+<p>Each major key has a <b>relative minor</b> directly inside it on the circle (C major and A minor, for example). They use exactly the same notes, only with a different home note. That’s why A minor starts on degree <span class="num">6</span> of C major.</p>
+<h3>Key signatures</h3>
+<p>A <b>key signature</b> is the number of sharps or flats a key uses. C major has none. Each step clockwise adds one sharp (G has 1, D has 2…), and each step counter-clockwise adds one flat (F has 1, B♭ has 2…). The center of the circle shows the count for your key.</p>
+<h3>Why fifths matter</h3>
+<p>The chord on <span class="num">5</span> pulls strongly back to <span class="num">1</span>. Many progressions move counter-clockwise around the circle, with each chord acting as the “V” of the next: vi → ii → V → I.</p>
+<button class="play" data-play="prog:major:60:5,1,4,0">vi → ii → V → I</button>
 
 <!-- ============================================================ -->
 <h2 id="rhythm"><span class="n">14</span>Rhythm: beats, bars and steps</h2>
 <ul>
-<li><b>Beat:</b> the pulse you tap your foot to.</li>
-<li><b>BPM</b> (beats per minute): how fast the beat goes. 70 = chill, 90–100 = hip-hop, 120–128 = house, 140 = dubstep/trap (feels like 70), 170+ = drum &amp; bass.</li>
-<li><b>Bar</b> (or measure): a group of 4 beats. Count “1 2 3 4, 1 2 3 4”.</li>
-<li><b>Step:</b> Bangerator splits each beat into 4 tiny <b>steps</b> (16th notes). So one bar = 16 steps. The grid lines get thicker every beat and every bar.</li>
-<li><b>Loop length:</b> how many bars before the song repeats. 4 or 8 bars is the classic.</li>
+<li><b>Beat:</b> the steady pulse you’d tap your foot to.</li>
+<li><b>BPM</b> (beats per minute): the tempo. Roughly: 70 is slow, 90–100 is typical hip-hop, 120–128 house, 140 dubstep and trap, 170+ drum &amp; bass.</li>
+<li><b>Bar</b> (or measure): a group of 4 beats, counted “1 2 3 4, 1 2 3 4”.</li>
+<li><b>Step:</b> Bangerator divides each beat into 4 steps (16th notes), so one bar has 16 steps. Grid lines are thicker on every beat and thickest on every bar.</li>
+<li><b>Loop length:</b> how many bars play before the loop repeats. 4 or 8 bars is typical.</li>
 </ul>
 <h3>Swing</h3>
-<p>Normally all 16 steps are exactly the same length. <b>Swing</b> makes every second step a little late, like “long-short, long-short”. It turns stiff robot beats into bouncy human grooves. Try 10–30% swing on hip-hop or house.</p>
+<p>Without swing, all steps are exactly equal in length. <b>Swing</b> delays every second step slightly, giving a “long-short, long-short” feel that sounds looser and more human. Around 10–30% works well for hip-hop and house.</p>
 
 <!-- ============================================================ -->
-<h2 id="drums"><span class="n">15</span>Drums 101</h2>
-<p>The drum grid is a <b>step sequencer</b>: each row is a drum sound, each box is a step. Light a box and that drum hits on that step.</p>
-<h3>The “four on the floor” (house, techno, disco)</h3>
+<h2 id="drums"><span class="n">15</span>Drum patterns</h2>
+<p>The drum grid is a <b>step sequencer</b>. Each row is a drum sound and each box is a step. A lit box means that drum plays on that step.</p>
+<h3>Four on the floor (house, techno, disco)</h3>
 <div class="grid16" data-grid="Kick:x...x...x...x...|Clap:....x.......x...|Hat:..x...x...x...x."></div>
 <button class="play" data-play="beat:124:x...x...x...x...|....x.......x...|..x...x...x...x.">Hear it</button>
 <h3>Boom-bap (hip-hop)</h3>
@@ -286,98 +292,96 @@ Keys that are <b>next to each other</b> on the circle are <b>best friends</b>: t
 <h3>Trap</h3>
 <div class="grid16" data-grid="Kick:x.....x...x.....|Snare:........x.......|Hat:x.x.x.xxx.x.x.xx"></div>
 <button class="play" data-play="beat:140:x.....x...x.....|........x.......|x.x.x.xxx.x.x.xx">Hear it</button>
-<div class="crayon green"><span class="tag">Crayon rules of drums</span>
-<b>Kick</b> = the heartbeat (usually on beat 1). <b>Snare/clap</b> = the “answer”, on beats 2 and 4 (or just beat 3 in half-time trap). <b>Hi-hats</b> = the ticking clock that keeps everything moving. Start with these three, then add sprinkles (toms, cowbell, samples).</div>
-<p><b>Accents:</b> shift-click (or right-click) a step to make it an extra-loud hit. Mixing loud and soft hi-hats makes a beat feel alive.</p>
+<div class="box green"><span class="tag">A starting point</span>
+The <b>kick</b> marks the main beats, usually including beat 1. The <b>snare or clap</b> usually lands on beats 2 and 4 (or only beat 3 in half-time styles like trap). <b>Hi-hats</b> fill in the steady rhythm between them. Get these three working first, then add other sounds.</div>
+<p><b>Accents:</b> Shift+click (or right-click) a step to make it louder. Mixing loud and quiet hi-hats makes a pattern sound less mechanical.</p>
 
 <!-- ============================================================ -->
 <h2 id="bass"><span class="n">16</span>Basslines</h2>
-<p>The bass is the glue between the drums and the chords. The simplest bassline that always works: <b>play the chord’s root number</b> (the chord’s own <span class="num">1</span>), low, in the rhythm of the kick drum.</p>
+<p>The bass connects the drums and the chords. A simple bassline that almost always works is to <b>play each chord’s root</b>, low, following the rhythm of the kick drum.</p>
 <ul>
-<li>Chord is <b>vi</b>? Play degree <span class="num">6</span> in the bass. Chord is <b>IV</b>? Play <span class="num">4</span>.</li>
-<li>For extra movement, jump to the chord’s 5th, or to the same note an octave up.</li>
-<li>For 808 bass: long notes, one per kick, sliding between roots.</li>
+<li>If the chord is <b>vi</b>, play degree <span class="num">6</span> in the bass. If it’s <b>IV</b>, play <span class="num">4</span>.</li>
+<li>For more movement, add the chord’s fifth, or the root an octave higher.</li>
+<li>808-style bass usually uses long notes, one per kick.</li>
 </ul>
-<p>In Bangerator, the rows tinted in a chord’s color are the chord’s notes. The <b>brightest</b> tinted row is the root, and that’s the safest bass note.</p>
+<p>In Bangerator, the rows tinted in a chord’s color are the notes of that chord. The most strongly tinted row is the root, which is the safest bass note.</p>
 
 <!-- ============================================================ -->
 <h2 id="melody"><span class="n">17</span>Writing melodies</h2>
 <ol>
-<li><b>Land on chord notes on strong beats.</b> Tinted rows = notes of the current chord. Put those on beats 1 and 3 and the melody fits the chords.</li>
-<li><b>Walk more than you jump.</b> Moving to the next number (3 → 4) sounds smooth. Big leaps (1 → 6) are exciting, so use them now and then, and step back afterwards.</li>
-<li><b>Repeat, then change a little.</b> Say it twice, then twist the ending. Listeners love recognizing things.</li>
-<li><b>Leave gaps.</b> Silence is part of the melody. Let it breathe.</li>
-<li><b>End on 1 (or 3 or 5)</b> to sound finished. End on 2 or 7 to sound like a question.</li>
+<li><b>Use chord notes on strong beats.</b> The tinted rows are the notes of the current chord. Placing those on beats 1 and 3 makes the melody fit the harmony.</li>
+<li><b>Mostly move by step.</b> Moving to a neighboring degree (3 → 4) sounds smooth. Larger jumps (1 → 6) add energy. After a big jump, stepping back the other way usually sounds natural.</li>
+<li><b>Repeat with variation.</b> Repeat a phrase, then change its ending. Repetition makes a melody memorable.</li>
+<li><b>Leave space.</b> Rests (silence) are part of a melody.</li>
+<li><b>Choose your ending.</b> Ending on 1, 3 or 5 sounds finished. Ending on 2 or 7 sounds like it’s waiting for an answer.</li>
 </ol>
-<p>Stuck? Write a melody first, then press <b>✨ Chords for my melody</b> and Bangerator picks chords that contain your notes.</p>
-<h3>Accidentals (♯ and ♭ notes)</h3>
-<p>Sometimes you want a note that isn’t in the scale, for a moment of color. Shift+click a note in Bangerator to raise it (♯) or lower it (♭). Use these sparingly, like hot sauce.</p>
+<p>If you have a melody but no chords, press <b>✨ Chords for my melody</b> and Bangerator will pick chords that contain your melody notes.</p>
+<h3>Notes outside the scale</h3>
+<p>Now and then a note outside the scale adds useful color. Shift+click a note in Bangerator to raise it (♯) or lower it (♭) by a half step. These notes are most effective when used sparingly.</p>
 
 <!-- ============================================================ -->
 <h2 id="sounddesign"><span class="n">18</span>Sound design: waves and envelopes</h2>
-<h3>The four basic waves</h3>
-<p>Every synth sound starts as a simple wave. Each shape has its own personality:</p>
+<h3>The four basic waveforms</h3>
+<p>A synthesizer starts from a simple repeating wave. The shape of the wave determines its basic tone:</p>
 <table>
-<tr><th>Wave</th><th>Sounds like</th><th>Good for</th><th></th></tr>
-<tr><td>Sine</td><td>Pure, round, a whistle or a hum</td><td>Sub bass, 808s, soft tones</td><td><button class="play" data-play="wave:sine">hear</button></td></tr>
-<tr><td>Triangle</td><td>Soft, flute-y, a sine with a little edge</td><td>Gentle leads, plucks</td><td><button class="play" data-play="wave:triangle">hear</button></td></tr>
-<tr><td>Square</td><td>Hollow, buzzy, retro video game</td><td>Chiptune, leads, woody bass</td><td><button class="play" data-play="wave:square">hear</button></td></tr>
-<tr><td>Saw</td><td>Bright, buzzy, full</td><td>Big leads, pads, basses (the EDM classic)</td><td><button class="play" data-play="wave:sawtooth">hear</button></td></tr>
+<tr><th>Wave</th><th>Sound</th><th>Common uses</th><th></th></tr>
+<tr><td>Sine</td><td>Pure and round, no edge</td><td>Sub bass, 808s, soft tones</td><td><button class="play" data-play="wave:sine">hear</button></td></tr>
+<tr><td>Triangle</td><td>Soft, slightly brighter than sine</td><td>Gentle leads, plucks</td><td><button class="play" data-play="wave:triangle">hear</button></td></tr>
+<tr><td>Square</td><td>Hollow, like old video game music</td><td>Chiptune, leads, basses</td><td><button class="play" data-play="wave:square">hear</button></td></tr>
+<tr><td>Saw</td><td>Bright and buzzy</td><td>Leads, pads, basses in most electronic music</td><td><button class="play" data-play="wave:sawtooth">hear</button></td></tr>
 </table>
-<p>Smooth waves (sine) have no extra “fizz”. Sharp-cornered waves (square, saw) are full of extra high sounds called <b>harmonics</b>, and that’s the fizz you hear.</p>
-<h3>The envelope: ADSR</h3>
-<p>An envelope is the <b>life story of one note</b>: how it’s born, lives and dies.</p>
+<p>Smooth waves like the sine contain only one frequency. Waves with sharp corners, like square and saw, also contain many higher frequencies called <b>harmonics</b>, which make them sound brighter.</p>
+<h3>The envelope (ADSR)</h3>
+<p>An <b>envelope</b> controls how a note’s volume changes over time, from the moment it starts until it fades out.</p>
 <table>
-<tr><th>Letter</th><th>Name</th><th>Crayon meaning</th></tr>
-<tr><td><b>A</b></td><td>Attack</td><td>How fast it gets loud. Short = punchy (drum, pluck). Long = slow swell (pad, strings).</td></tr>
-<tr><td><b>D</b></td><td>Decay</td><td>How fast it drops after the first hit.</td></tr>
-<tr><td><b>S</b></td><td>Sustain</td><td>How loud it stays while you hold the note. 0% = it fades away even if you hold it (piano, pluck).</td></tr>
-<tr><td><b>R</b></td><td>Release</td><td>How long it rings after you let go. Short = tight, long = echo-y tail.</td></tr>
+<tr><th>Letter</th><th>Name</th><th>What it controls</th></tr>
+<tr><td><b>A</b></td><td>Attack</td><td>How quickly the note reaches full volume. Short is punchy (drums, plucks); long fades in gradually (pads, strings).</td></tr>
+<tr><td><b>D</b></td><td>Decay</td><td>How quickly the volume drops after the initial peak.</td></tr>
+<tr><td><b>S</b></td><td>Sustain</td><td>The volume held while the note continues. At 0% the note fades out even if it’s held (like a piano or pluck).</td></tr>
+<tr><td><b>R</b></td><td>Release</td><td>How long the note takes to fade out after it ends.</td></tr>
 </table>
 <button class="play" data-play="env:pluck">Pluck (fast attack, no sustain)</button>
 <button class="play" data-play="env:pad">Pad (slow attack, long release)</button>
 <h3>The filter</h3>
-<p>A <b>low-pass filter</b> is like putting your hand over the speaker: it removes the bright fizz. Turning the <b>cutoff</b> down makes the sound darker. <b>Resonance</b> adds a whistle right at the cutoff point. <b>Filter pluck</b> opens the filter at the start of each note and closes it again. That “wow” is behind most synth basses.</p>
-<h3>Pitch drop (808 style)</h3>
-<p>If each note starts higher and quickly slides down, a sine wave turns into a booming <b>808 kick-bass</b>. Bangerator’s “808 Sub” instrument works this way.</p>
+<p>A <b>low-pass filter</b> removes high frequencies. Lowering the <b>cutoff</b> makes the sound darker and more muffled. <b>Resonance</b> boosts the frequencies right at the cutoff, adding a sharper, whistling edge. <b>Filter pluck</b> opens the filter at the start of each note and then closes it, a very common sound for synth basses.</p>
+<h3>Pitch drop</h3>
+<p>If a note starts at a higher pitch and quickly slides down, a sine wave becomes the deep “boom” of an <b>808 bass</b>. Bangerator’s “808 Sub” instrument works this way.</p>
 
 <!-- ============================================================ -->
-<h2 id="midi"><span class="n">19</span>What is MIDI?</h2>
-<p>MIDI is <b>sheet music for computers</b>. It doesn’t contain any sound. It’s a list of instructions like “press note 60, this hard, now… let go now”. Any instrument can play it.</p>
+<h2 id="midi"><span class="n">19</span>MIDI</h2>
+<p><b>MIDI</b> is a format for musical instructions, not sound. A MIDI file records which notes to play, when, for how long and how hard. Any instrument or software that understands MIDI can play it back with its own sounds.</p>
 <ul>
-<li><b>Export MIDI</b> saves your song as a <code>.mid</code> file. Drag it into FL Studio, Ableton, Logic or GarageBand and pick any instruments you like.</li>
-<li><b>MIDI output</b> sends notes live to a DAW or hardware synth while Bangerator plays (Chrome/Edge).</li>
+<li><b>Export MIDI</b> saves your song as a <code>.mid</code> file that you can open in FL Studio, Ableton, Logic, GarageBand and most other music software.</li>
+<li><b>MIDI output</b> sends notes live to other music software or a hardware synthesizer while Bangerator plays (Chrome and Edge only).</li>
 </ul>
-<p>Note numbers in MIDI: 60 is middle C, and +1 is one half step up, so +12 is one octave up.</p>
+<p>MIDI numbers notes from 0 to 127. Middle C is 60, each half step adds 1, and each octave adds 12.</p>
 
 <!-- ============================================================ -->
-<h2 id="cheat"><span class="n">20</span>Cheat sheet</h2>
+<h2 id="cheat"><span class="n">20</span>Quick reference</h2>
 <table>
-<tr><th>I want it to sound…</th><th>Try</th></tr>
-<tr><td>Happy / uplifting</td><td>Major or Lydian. I–V–vi–IV.</td></tr>
-<tr><td>Sad / emotional</td><td>Minor. vi–IV–I–V in major, or i–VI–III–VII in minor.</td></tr>
-<tr><td>Dark / aggressive</td><td>Phrygian or Harmonic Minor. i–♭II.</td></tr>
-<tr><td>Chill / lo-fi</td><td>Dorian, 7th chords, 70–90 BPM, some swing.</td></tr>
-<tr><td>Funky</td><td>Dorian or Mixolydian, off-beat chord stabs.</td></tr>
+<tr><th>For a sound that’s…</th><th>Try</th></tr>
+<tr><td>Happy, uplifting</td><td>Major or Lydian. I–V–vi–IV.</td></tr>
+<tr><td>Sad, emotional</td><td>Minor. vi–IV–I–V in major, or i–VI–III–VII in minor.</td></tr>
+<tr><td>Dark, aggressive</td><td>Phrygian or Harmonic Minor. i–♭II.</td></tr>
+<tr><td>Relaxed, lo-fi</td><td>Dorian, 7th chords, 70–90 BPM, some swing.</td></tr>
+<tr><td>Funky</td><td>Dorian or Mixolydian, with off-beat chord stabs.</td></tr>
 <tr><td>Dreamy</td><td>Lydian or Whole Tone, slow pads, sus2 chords.</td></tr>
-<tr><td>Exotic</td><td>Phrygian Dominant or Double Harmonic.</td></tr>
-<tr><td>Can’t-go-wrong</td><td>Any pentatonic scale.</td></tr>
+<tr><td>Middle Eastern or Spanish</td><td>Phrygian Dominant or Double Harmonic.</td></tr>
+<tr><td>Safe for beginners</td><td>Any pentatonic scale.</td></tr>
 </table>
-<h3>Mini glossary</h3>
+<h3>Glossary</h3>
 <table>
-<tr><td><b>Degree</b></td><td>A note’s number in the scale (1–7).</td></tr>
-<tr><td><b>Key</b></td><td>Which note is 1 (home).</td></tr>
-<tr><td><b>Scale</b></td><td>The recipe for which notes are allowed.</td></tr>
+<tr><td><b>Degree</b></td><td>A note’s position in the scale, numbered 1–7.</td></tr>
+<tr><td><b>Key</b></td><td>Which note is degree 1 (home).</td></tr>
+<tr><td><b>Scale</b></td><td>The set of notes a song uses.</td></tr>
 <tr><td><b>Interval</b></td><td>The distance between two notes.</td></tr>
-<tr><td><b>Triad</b></td><td>A 3-note chord made by stacking every other degree.</td></tr>
-<tr><td><b>Root</b></td><td>The bottom “name” note of a chord (its own 1).</td></tr>
-<tr><td><b>Inversion</b></td><td>The same chord with a different note at the bottom. Bangerator’s “smooth” option picks inversions so chords glide into each other.</td></tr>
-<tr><td><b>Arpeggio</b></td><td>Playing a chord’s notes one after another instead of together.</td></tr>
-<tr><td><b>Resolution</b></td><td>Tension going back to calm (V → I).</td></tr>
+<tr><td><b>Triad</b></td><td>A 3-note chord built by taking every other scale degree.</td></tr>
+<tr><td><b>Root</b></td><td>The note a chord is built on.</td></tr>
+<tr><td><b>Inversion</b></td><td>The same chord with a different note at the bottom. Bangerator’s “smooth” option picks inversions so that chords move as little as possible.</td></tr>
+<tr><td><b>Arpeggio</b></td><td>A chord played one note at a time instead of all together.</td></tr>
+<tr><td><b>Resolution</b></td><td>Moving from tension to stability, for example V → I.</td></tr>
 <tr><td><b>Mode</b></td><td>A scale made by starting another scale from a different note.</td></tr>
 </table>
-<hr>
-<p class="lead">Now go make a banger. Remember: <b>1 is home</b>, everything else is an adventure. 🖍️</p>
 </main>
 </div>
 

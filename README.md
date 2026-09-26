@@ -1,6 +1,6 @@
 # Bangerator
 
-A composing tool that uses **scale degrees instead of note names**. You pick a key and a scale, write melodies and basslines as numbers (1 = home), and swap scales to hear the same loop in a different mood. It also has a chord lane with suggestions, a circle of fifths, an FL-style drum and sample step sequencer, a small synth for sound design, MIDI/WAV export, and a music theory guide written in crayon terms.
+A composing tool that uses **scale degrees instead of note names**. You pick a key and a scale, write melodies and basslines as numbers (1 = home), and swap scales to hear the same loop in a different mood. It also has a chord lane with suggestions, a circle of fifths, an FL-style drum and sample step sequencer, a small synth for sound design, MIDI/WAV export, and a beginner music theory guide that assumes no prior knowledge.
 
 ## Hosting
 

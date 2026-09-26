@@ -41,7 +41,7 @@
       <button class="btn" id="btn-file">File ▾</button>
       <div class="dropdown-menu" id="menu-file">
         <button data-act="new">New project</button>
-        <button data-act="demo">Load demo</button>
+        <button data-act="demo">Load demo (Love Parade riff)</button>
         <button data-act="save">Save project file (.json)</button>
         <button data-act="open">Open project file…</button>
         <hr>
@@ -73,6 +73,13 @@
       <div class="compose-toolbar">
         <button class="btn" id="btn-add-track">+ Melody track</button>
         <label class="field">Zoom <input id="in-zoom" type="range" min="14" max="48" value="26"></label>
+        <div class="seg" id="note-mode" title="What happens to your notes when you change the key or scale">
+          <span class="seg-label">When the scale changes, notes…</span>
+          <button data-mode="degrees" title="Notes are scale degrees: they follow the new key and scale (Bangerator's way)">follow the scale</button>
+          <button data-mode="fixed" title="Notes keep their exact pitch, like the piano roll in most DAWs">keep their pitch (DAW)</button>
+        </div>
+        <span class="scale-status" id="scale-status" hidden><span id="scale-status-text"></span>
+          <button class="btn small" id="btn-snap" title="Move every out-of-scale note to its nearest scale note">Snap to scale</button></span>
         <label class="field check"><input type="checkbox" id="in-notenames"> Show note names</label>
         <span class="hint" id="compose-hint">Click the grid to add notes. Drag to move. Drag the right edge to stretch. Click a note again to delete. Shift+click a note makes it ♯/♭. Keys 1–8 play degrees.</span>
       </div>
@@ -98,7 +105,7 @@
   <div class="start-box">
     <h1>Bangerator</h1>
     <p>Make music with <b>numbers</b> instead of note names.<br>Pick a scale, put numbers on the grid, and swap scales to hear the same loop in a new mood.</p>
-    <button class="btn big" id="btn-start">Let’s go ▶</button>
+    <button class="btn big" id="btn-start">Start ▶</button>
     <p class="hint">All sound is made right here in your browser.</p>
   </div>
 </div>
