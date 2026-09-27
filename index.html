@@ -23,6 +23,7 @@
 
   <div class="group keyscale">
     <label class="field">Key <select id="in-root"></select></label>
+    <span class="key-where" id="key-where" title="Which key section you are editing (pick one in the Key lane)"></span>
     <button class="btn small" id="btn-scale-prev" title="Previous scale">◀</button>
     <label class="field">Scale <select id="in-scale"></select></label>
     <button class="btn small" id="btn-scale-next" title="Next scale (same loop, new flavor)">▶</button>
@@ -30,6 +31,7 @@
 
   <nav class="tabs" role="tablist">
     <button class="tab active" data-tab="compose">Compose</button>
+    <button class="tab" data-tab="mix">Mix &amp; FX</button>
     <button class="tab" data-tab="sound">Sound Design</button>
     <button class="tab" data-tab="learn">Learn</button>
   </nav>
@@ -73,15 +75,11 @@
       <div class="compose-toolbar">
         <button class="btn" id="btn-add-track">+ Melody track</button>
         <label class="field">Zoom <input id="in-zoom" type="range" min="14" max="48" value="26"></label>
-        <div class="seg" id="note-mode" title="What happens to your notes when you change the key or scale">
-          <span class="seg-label">When the scale changes, notes…</span>
-          <button data-mode="degrees" title="Notes are scale degrees: they follow the new key and scale (Bangerator's way)">follow the scale</button>
-          <button data-mode="fixed" title="Notes keep their exact pitch, like the piano roll in most DAWs">keep their pitch (DAW)</button>
-        </div>
+        <button class="btn" id="btn-dup" title="Double the loop: copies every note, chord, drum hit and key change after itself">×2 Duplicate loop</button>
         <span class="scale-status" id="scale-status" hidden><span id="scale-status-text"></span>
           <button class="btn small" id="btn-snap" title="Move every out-of-scale note to its nearest scale note">Snap to scale</button></span>
         <label class="field check"><input type="checkbox" id="in-notenames"> Show note names</label>
-        <span class="hint" id="compose-hint">Click the grid to add notes. Drag to move. Drag the right edge to stretch. Click a note again to delete. Shift+click a note makes it ♯/♭. Keys 1–8 play degrees.</span>
+        <span class="hint" id="compose-hint">Click the grid to add notes. Drag to move. Drag the right edge to stretch. Click a note again to delete. Shift+click a note in a Scale track makes it ♯/♭. Keys 1–8 play degrees.</span>
       </div>
       <div class="timeline" id="timeline">
         <div class="timeline-inner" id="timeline-inner">
@@ -90,6 +88,8 @@
         </div>
       </div>
     </section>
+
+    <section class="tabpanel" id="tab-mix"></section>
 
     <section class="tabpanel" id="tab-sound"></section>
 

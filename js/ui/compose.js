@@ -1,11 +1,12 @@
 // Compose view: ruler, chord lane, melody tracks (scale rolls) and the drum step sequencer.
 // Every lane shares the same horizontal step grid so everything lines up.
 
-import { store, commit, touch, loopSteps, newTrack, TRACK_COLORS, uid, saveSampleData, STEPS_PER_BAR } from '../state.js';
-import { romanNumeral, chordName, chordFunction, scaleSteps, harmonyScaleId, CHORD_TYPES, FUNCTION_INFO, mod } from '../theory.js';
+import { store, commit, touch, loopSteps, newTrack, TRACK_COLORS, uid, saveSampleData, STEPS_PER_BAR,
+  sections, sectionIndexAt, keyAt, addKeyChange, removeKeyChange, setTrackMode } from '../state.js';
+import { romanNumeral, chordName, chordFunction, scaleSteps, harmonyScaleId, CHORD_TYPES, FUNCTION_INFO, SCALES, keyName, mod } from '../theory.js';
 import { audio, playBuffer, decodeUserSample } from '../audio.js';
 import { ScaleRoll, KEYS_W } from './scaleroll.js';
-import { ui, h, previewDeg, previewChord, toast, patchOf } from './common.js';
+import { ui, h, previewDeg, previewTrackMidi, previewChord, toast, patchOf } from './common.js';
 import { play, stop, transport, syncMixer } from '../sequencer.js';
 
 let rolls = [];
@@ -26,9 +27,10 @@ export function renderCompose() {
   lastLitCol = -1;
 
   lanes.append(rulerLane(L, cw));
+  lanes.append(keyLane(p, L, cw));
   lanes.append(sectionTitle('Chords', 'The harmony. Pick chords from the sidebar, or click a slot and then click a chord.'));
   lanes.append(chordLane(p, L, cw));
-  lanes.append(sectionTitle('Melody & Bass', 'Rows are scale degrees. 1 is home. Tinted rows are notes of the chord playing above them.'));
+  lanes.append(sectionTitle('Melody & Bass', 'Scale tracks: rows are scale degrees (1 is home). Piano tracks: rows are the 12 notes. Tinted rows are notes of the chord playing above them.'));
   for (const t of p.tracks) lanes.append(trackLane(t, L));
   lanes.append(sectionTitle('Drums & Samples', 'Click steps to toggle. Shift or right-click for a loud accent. Drop audio files here to add sample rows.', drumSectionDrop()));
   for (const r of p.drums.rows) lanes.append(drumLane(r, L, cw));
@@ -49,7 +51,7 @@ function sectionTitle(text, hint, extraAttrs) {
 
 // ---------- Ruler ----------
 function rulerLane(L, cw) {
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = Math.min(window.devicePixelRatio || 1, 32000 / (L * cw));
   const c = h('canvas');
   c.width = L * cw * dpr; c.height = 24 * dpr;
   c.style.width = L * cw + 'px'; c.style.height = '24px';
@@ -80,23 +82,69 @@ function rulerLane(L, cw) {
     h('div', { class: 'lane-body' }, c));
 }
 
+// ---------- Key lane: key/scale sections ----------
+const SECTION_COLORS = ['#b197fc', '#4dabf7', '#63e6be', '#ffa94d', '#f783ac', '#ffd43b'];
+
+function keyLane(p, L, cw) {
+  const secs = sections(p);
+  const body = h('div', { class: 'lane-body key-body' });
+  for (let bar = 0; bar * STEPS_PER_BAR < L; bar++) {
+    const i = sectionIndexAt(p, bar * STEPS_PER_BAR);
+    const sec = secs[i];
+    const isStart = sec.bar === bar;
+    const cell = h('div', { class: 'key-cell' + (isStart ? ' start' : '') + (ui.selectedSection === i ? ' selected' : ''),
+      style: { width: STEPS_PER_BAR * cw + 'px', '--sec': SECTION_COLORS[i % SECTION_COLORS.length] } });
+    if (isStart) {
+      cell.append(h('span', { class: 'key-label' }, `${keyName(sec.root, sec.scale)} ${SCALES[sec.scale].name.split(' (')[0]}`));
+      cell.title = i === 0
+        ? 'The song’s starting key. Click to edit it with Key/Scale in the top bar.'
+        : `Key change at bar ${bar + 1}. Click to edit it in the top bar. Right-click to remove it.`;
+      cell.addEventListener('click', () => { ui.selectedSection = i; touch('selection'); });
+      cell.addEventListener('contextmenu', e => {
+        e.preventDefault();
+        if (i === 0) return;
+        ui.selectedSection = 0;
+        removeKeyChange(i);
+        toast(`Removed the key change at bar ${bar + 1}.`);
+      });
+    } else {
+      cell.append(h('span', { class: 'key-plus' }, '+'));
+      cell.title = `Change key or scale from bar ${bar + 1}`;
+      cell.addEventListener('click', () => {
+        const idx = addKeyChange(bar);
+        if (idx < 0) return;
+        ui.selectedSection = idx;
+        touch('selection');
+        toast(`New section from bar ${bar + 1}. Pick its key and scale in the top bar.`);
+      });
+    }
+    body.append(cell);
+  }
+  return h('div', { class: 'lane key-lane' },
+    h('div', { class: 'lane-head' }, h('div', { class: 'head-controls' },
+      h('b', { title: 'Click a bar to change key or scale from there. Click a section to edit it in the top bar. Right-click a section to remove it.' }, 'Key'),
+      h('span', { class: 'hint', style: { margin: 0 } }, 'Click a bar to change key there'))),
+    body);
+}
+
 // ---------- Chord lane ----------
 function slotCount(p) { return Math.ceil(loopSteps() / p.chords.slotSteps); }
 
 function chordLane(p, L, cw) {
   const c = p.chords;
-  const steps = scaleSteps(harmonyScaleId(p.scale));
   const body = h('div', { class: 'lane-body' });
   const n = slotCount(p);
   for (let i = 0; i < n; i++) {
     const s = c.slots[i];
+    const k = keyAt(p, i * c.slotSteps);
+    const steps = scaleSteps(harmonyScaleId(k.scale));
     const w = Math.min(c.slotSteps, L - i * c.slotSteps) * cw;
     let el;
     if (s) {
       const fn = chordFunction(s.deg, steps);
       el = h('div', { class: 'chord-slot', style: { width: w + 'px', '--fn': FUNCTION_INFO[fn].color } },
         h('div', { class: 'rn' }, romanNumeral(steps, s.deg, s.type)),
-        h('div', { class: 'cn' }, chordName(p.root, p.scale, s.deg, s.type)),
+        h('div', { class: 'cn' }, chordName(k.root, k.scale, s.deg, s.type)),
         h('div', { class: 'fn' }, FUNCTION_INFO[fn].label));
       el.style.setProperty('--fn', FUNCTION_INFO[fn].color);
       el.title = `${FUNCTION_INFO[fn].label}: ${FUNCTION_INFO[fn].help}\nRight-click to clear.`;
@@ -107,7 +155,8 @@ function chordLane(p, L, cw) {
     if (ui.selectedSlot === i) el.classList.add('selected');
     el.addEventListener('click', () => {
       ui.selectedSlot = ui.selectedSlot === i ? null : i;
-      if (s) previewChord(s.deg, s.type);
+      if (ui.selectedSlot != null) ui.selectedSection = sectionIndexAt(p, i * c.slotSteps);
+      if (s) previewChord(s.deg, s.type, 0.9, i * c.slotSteps);
       touch('selection');
     });
     el.addEventListener('contextmenu', e => {
@@ -123,7 +172,7 @@ function chordLane(p, L, cw) {
       if (!data) return;
       const { deg, type } = JSON.parse(data);
       c.slots[i] = { deg, type };
-      previewChord(deg, type);
+      previewChord(deg, type, 0.9, i * c.slotSteps);
       commit('chords');
     });
     body.append(el);
@@ -153,7 +202,7 @@ function setSlotSteps(v) {
   const c = store.project.chords;
   const old = c.slotSteps;
   const out = [];
-  const total = Math.ceil(16 * 16 / v);
+  const total = Math.ceil(32 * 16 / v);
   for (let i = 0; i < total; i++) {
     const src = Math.floor((i * v) / old);
     out.push(c.slots[src] ? { ...c.slots[src] } : null);
@@ -203,7 +252,9 @@ function trackLane(t, L) {
     cellW: () => ui.cellW,
     rowH: ui.rowH,
     loopSteps: () => loopSteps(),
-    onPreview: (tr, deg, alt) => previewDeg(tr, deg, alt),
+    labelSection: () => ui.selectedSection,
+    onPreviewDeg: (tr, deg, alt, step) => previewDeg(tr, deg, alt, 0.35, step),
+    onPreviewMidi: (tr, midi) => previewTrackMidi(tr, midi),
     onCommit: () => commit('notes'),
     onSelect: tr => selectTrack(tr.id),
   });
@@ -215,6 +266,11 @@ function trackLane(t, L) {
       h('input', { class: 'track-name', value: t.name, onchange: e => { t.name = e.target.value; commit('mix'); } }),
       muteSolo(t)),
     h('div', { class: 'head-row' }, patchSelect(t.patch, v => { t.patch = v; commit('mix'); })),
+    h('div', { class: 'head-row mode-row' },
+      h('button', { class: 'btn' + (t.mode !== 'piano' ? ' on' : ''), title: 'Rows are scale degrees. Notes follow key and scale changes.',
+        onclick: () => switchMode(t, 'scale') }, 'Scale'),
+      h('button', { class: 'btn' + (t.mode === 'piano' ? ' on' : ''), title: 'A normal piano roll: rows are the 12 notes and notes keep their pitch when the key or scale changes.',
+        onclick: () => switchMode(t, 'piano') }, 'Piano')),
     h('div', { class: 'head-row' },
       octaveCtl(t, 'notes'),
       h('select', { title: 'How many octaves of rows to show', style: { flex: '0 0 auto' }, onchange: e => { t.range = Number(e.target.value); commit('all'); } },
@@ -233,6 +289,14 @@ function trackLane(t, L) {
   head.addEventListener('pointerdown', () => selectTrack(t.id));
   lane.append(head, h('div', { class: 'lane-body' }, roll.canvas));
   return lane;
+}
+
+function switchMode(t, mode) {
+  if ((t.mode || 'scale') === mode) return;
+  setTrackMode(t, mode);
+  toast(mode === 'piano'
+    ? `“${t.name}” is now a piano roll: notes keep their exact pitch, the scale is only highlighted.`
+    : `“${t.name}” now uses scale degrees: notes follow the key and scale.`, 4000);
 }
 
 // Repeat the first N bars that contain notes across the whole loop.
@@ -323,7 +387,7 @@ function auditionRow(r, vel) {
   if (!audio.ctx || transport.playing) return;
   const buf = r.kind === 'sample' ? audio.userBuffers[r.sampleId] : audio.drumBuffers[r.kind];
   syncMixer();
-  playBuffer(audio.ctx, audio.mixer.strip(r.id).gain, buf, audio.ctx.currentTime + 0.005, vel, r.pitch);
+  playBuffer(audio.ctx, audio.mixer.rowStrip(r.id).gain, buf, audio.ctx.currentTime + 0.005, vel, r.pitch);
 }
 
 function addSampleLane() {

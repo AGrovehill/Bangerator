@@ -1,7 +1,7 @@
 // Bangerator entry point: wires the top bar, views, keyboard shortcuts and the playhead loop.
 
-import { store, subscribe, commit, setProject, loadSaved, defaultProject, changeScale, changeRoot, setBars, undo, redo,
-  outOfScaleCount, snapToScale,
+import { store, subscribe, commit, setProject, loadSaved, defaultProject, changeKey, setBars, undo, redo,
+  outOfScaleCount, snapToScale, duplicateLoop, sections, STEPS_PER_BAR,
   exportProjectJSON, importProjectJSON, loadSampleData, MAX_BARS, loopSteps } from './state.js';
 import { SCALES, SCALE_ORDER, ROOT_NAMES, keySignature, harmonyScaleId, degToSemis, scaleSteps } from './theory.js';
 import { initAudio, audio, ensureSampleSet, decodeUserSample } from './audio.js';
@@ -10,7 +10,8 @@ import { buildMidiFile, gmProgram, midiOut } from './midi.js';
 import { renderCompose, redrawRolls, drawPlayhead, addTrack, selectTrack } from './ui/compose.js';
 import { renderSidebar } from './ui/sidebar.js';
 import { renderSoundDesign, playTest, rebuildDrumKit } from './ui/sounddesign.js';
-import { ui, toast, modal, download, previewDeg, h } from './ui/common.js';
+import { ui, toast, modal, download, previewDeg, selectedKey, h } from './ui/common.js';
+import { renderMixer } from './ui/mixer.js';
 
 const $ = id => document.getElementById(id);
 let activeTab = 'compose';
@@ -26,15 +27,18 @@ function initTopbar() {
   $('in-bars').addEventListener('change', e => setBars(Number(e.target.value)));
   $('in-swing').addEventListener('input', e => { store.project.swing = Number(e.target.value); });
   $('in-swing').addEventListener('change', () => commit('tempo'));
-  $('in-root').addEventListener('change', e => changeRoot(Number(e.target.value)));
-  $('in-scale').addEventListener('change', e => changeScale(e.target.value));
+  $('in-root').addEventListener('change', e => changeKey(Number(e.target.value), selectedKey().scale, ui.selectedSection));
+  $('in-scale').addEventListener('change', e => changeKey(selectedKey().root, e.target.value, ui.selectedSection));
   $('btn-scale-prev').addEventListener('click', () => stepScale(-1));
   $('btn-scale-next').addEventListener('click', () => stepScale(1));
   $('btn-undo').addEventListener('click', undo);
   $('btn-redo').addEventListener('click', redo);
   $('btn-add-track').addEventListener('click', addTrack);
   $('in-zoom').addEventListener('input', e => { ui.cellW = Number(e.target.value); renderCompose(); });
-  document.querySelectorAll('#note-mode button').forEach(b => b.addEventListener('click', () => setNoteMode(b.dataset.mode)));
+  $('btn-dup').addEventListener('click', () => {
+    if (duplicateLoop()) toast(`Loop doubled to ${store.project.bars} bars. Change the copy to build the next part.`);
+    else toast('The loop is already at the 32-bar limit.');
+  });
   $('btn-snap').addEventListener('click', () => { snapToScale(); toast('Every note moved to its nearest scale note.'); });
   $('in-notenames').addEventListener('change', e => { store.project.showNoteNames = e.target.checked; commit('all'); });
 
@@ -65,27 +69,15 @@ function initTopbar() {
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 function stepScale(dir) {
-  const p = store.project;
-  const i = SCALE_ORDER.indexOf(p.scale);
+  const k = selectedKey();
+  const i = SCALE_ORDER.indexOf(k.scale);
   const next = SCALE_ORDER[(i + dir + SCALE_ORDER.length) % SCALE_ORDER.length];
-  changeScale(next);
+  changeKey(k.root, next, ui.selectedSection);
   toast(`${SCALES[next].name}: ${SCALES[next].mood}`);
 }
 
-function setNoteMode(mode) {
-  const p = store.project;
-  if (p.noteMode === mode) return;
-  p.noteMode = mode;
-  commit('all');
-  toast(mode === 'fixed'
-    ? 'DAW mode: notes keep their exact pitch. Change the scale or key and see which notes fall outside it.'
-    : 'Scale-degree mode: notes follow the key and scale, so a scale swap keeps the melody in the scale.', 4500);
-}
-
-// The mode switch and the "notes outside the scale" counter in the compose toolbar.
+// The "notes outside the scale" counter in the compose toolbar.
 function syncNoteMode() {
-  const p = store.project;
-  document.querySelectorAll('#note-mode button').forEach(b => b.classList.toggle('on', b.dataset.mode === p.noteMode));
   const n = outOfScaleCount();
   $('scale-status').hidden = !n;
   $('scale-status-text').textContent = `${n} note${n === 1 ? '' : 's'} outside the scale`;
@@ -97,8 +89,11 @@ function syncTopbar() {
   $('in-bpm').value = p.bpm;
   $('in-bars').value = p.bars;
   $('in-swing').value = p.swing;
-  $('in-root').value = p.root;
-  $('in-scale').value = p.scale;
+  const k = selectedKey();
+  $('in-root').value = k.root;
+  $('in-scale').value = k.scale;
+  const secs = sections(p);
+  $('key-where').textContent = secs.length > 1 ? `from bar ${k.bar + 1}` : '';
   $('in-notenames').checked = p.showNoteNames;
   $('btn-undo').disabled = !store.undoStack.length;
   $('btn-redo').disabled = !store.redoStack.length;
@@ -110,6 +105,7 @@ function showTab(tab) {
   document.querySelectorAll('.tabpanel').forEach(p => p.classList.toggle('active', p.id === 'tab-' + tab));
   $('sidebar').style.display = tab === 'learn' ? 'none' : '';
   if (tab === 'sound') renderSoundDesign();
+  if (tab === 'mix') renderMixer();
 }
 
 async function togglePlay() {
@@ -140,6 +136,7 @@ async function fileAction(act) {
     if (!confirm('Load the demo? This replaces the current project (you can undo).')) return;
     store.project = defaultProject();
     ui.selectedSlot = null;
+    ui.selectedSection = 0;
     ui.selectedTrackId = store.project.tracks[0].id;
     commit('all');
     await afterAudioReady();
@@ -179,9 +176,9 @@ function exportMidi(safeName, loops) {
     notes: events.filter(e => e.trackId === t.id) }));
   groups.push({ name: 'Chords', channel: 10, program: gmProgram(p.patches[p.chords.patch]), notes: events.filter(e => e.trackId === 'chords') });
   groups.push({ name: 'Drums', channel: 9, notes: events.filter(e => e.kind === 'drum').map(e => ({ step: e.step, dur: 1, midi: e.gm, vel: e.vel })) });
-  const family = SCALES[harmonyScaleId(p.scale)].family;
-  const blob = buildMidiFile({ bpm: p.bpm, loops, loopSteps: loopSteps(), keySig: keySignature(p.root, p.scale), minor: family === 'minor',
-    groups: groups.filter(g => g.notes.length) });
+  const keySigs = sections(p).map(k => ({ step: k.bar * STEPS_PER_BAR, sf: keySignature(k.root, k.scale),
+    minor: SCALES[harmonyScaleId(k.scale)].family === 'minor' }));
+  const blob = buildMidiFile({ bpm: p.bpm, loops, loopSteps: loopSteps(), keySigs, groups: groups.filter(g => g.notes.length) });
   download(blob, `${safeName}.mid`);
   toast('MIDI file exported.');
 }
@@ -229,6 +226,7 @@ async function midiOutDialog() {
 // ---------- Project loading ----------
 async function loadProject(p) {
   if (transport.playing) { stop(); $('btn-play').classList.remove('playing'); $('btn-play').textContent = '▶'; }
+  ui.selectedSection = 0;
   setProject(p);
   ui.selectedSlot = null;
   ui.selectedTrackId = store.project.tracks[0]?.id ?? null;
@@ -255,6 +253,7 @@ async function afterAudioReady() {
 // ---------- Store updates -> views ----------
 function onChange(what) {
   invalidateEvents();
+  if (what === 'fx') { syncMixer(); syncTopbar(); return; }
   if (what === 'notes') { redrawRolls(); syncTopbar(); return; }
   if (what === 'drums' || what === 'tempo') { syncTopbar(); return; }
   syncMixer();
@@ -262,6 +261,7 @@ function onChange(what) {
   renderCompose();
   renderSidebar();
   if (activeTab === 'sound' && what !== 'patches') renderSoundDesign();
+  if (activeTab === 'mix') renderMixer();
 }
 
 // ---------- Keyboard ----------
@@ -277,7 +277,7 @@ function initKeys() {
     // number keys play scale degrees (shift = octave up)
     const m = e.code.match(/^(Digit|Numpad)([1-9])$/);
     if (m && !e.repeat && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      const n = scaleSteps(store.project.scale).length;
+      const n = scaleSteps(selectedKey().scale).length;
       const deg = Number(m[2]) - 1 + (e.shiftKey ? n : 0);
       if (activeTab === 'sound') { held.set(e.code, playTest(deg, 4, 4)); return; }
       const t = store.project.tracks.find(x => x.id === ui.selectedTrackId) || store.project.tracks[0];

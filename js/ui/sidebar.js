@@ -1,27 +1,31 @@
 // Sidebar: circle of fifths, scale info, chord palette, "what comes next" and progressions.
 
-import { store, commit, changeScale, changeKey, loopSteps, STEPS_PER_BAR, MAX_BARS } from '../state.js';
+import { store, commit, changeKey, loopSteps, STEPS_PER_BAR, MAX_BARS, sections, keyAt } from '../state.js';
 import { SCALES, scaleSteps, harmonyScaleId, spellScale, intervalLabel, stepPattern, keySignature, keyName,
   romanNumeral, chordName, chordFunction, CHORD_TYPES, FUNCTION_INFO, PROGRESSIONS, suggestNext, harmonize, chordSemis, chordQuality, mod } from '../theory.js';
 import { renderCircle } from './circle.js';
-import { ui, h, previewChord, previewDeg, toast } from './common.js';
+import { ui, h, previewChord, previewDeg, toast, selectedKey } from './common.js';
 import { slotCount } from './compose.js';
+import { noteMidi } from '../sequencer.js';
 
 // Modes from brightest to darkest: swapping along this line changes the mood step by step.
 const BRIGHTNESS = ['lydian', 'major', 'mixolydian', 'dorian', 'minor', 'phrygian', 'locrian'];
 
 export function renderSidebar() {
-  const p = store.project;
+  const proj = store.project;
+  // Everything here describes the key section being edited (selected in the Key lane).
+  const k = selectedKey();
+  const p = { ...proj, root: k.root, scale: k.scale };
   renderCircle(document.getElementById('circle'), p, {
     onPickRoot: (root, fam) => {
       const flip = (p.scale === 'major' && fam === 'minor') || (p.scale === 'minor' && fam === 'major');
-      changeKey(root, flip ? fam : p.scale);
+      changeKey(root, flip ? fam : p.scale, ui.selectedSection);
     },
     onAudition: deg => previewChord(deg, 'triad'),
   });
   renderScaleCard(p);
   renderPalette(p);
-  renderSuggestions(p);
+  renderSuggestions(proj);
   renderProgressions(p);
 }
 
@@ -48,8 +52,9 @@ function renderScaleCard(p) {
     idx > 0 ? h('button', { class: 'btn', onclick: () => swapTo(BRIGHTNESS[idx - 1]) }, `☀ Brighter: ${SCALES[BRIGHTNESS[idx - 1]].name.split(' (')[0]}`) : null,
     idx < BRIGHTNESS.length - 1 ? h('button', { class: 'btn', onclick: () => swapTo(BRIGHTNESS[idx + 1]) }, `☾ Darker: ${SCALES[BRIGHTNESS[idx + 1]].name.split(' (')[0]}`) : null) : null;
 
+  const secs = sections(store.project);
   card.replaceChildren(
-    h('h3', {}, 'Your scale'),
+    h('h3', {}, secs.length > 1 ? `Scale from bar ${secs[ui.selectedSection].bar + 1}` : 'Your scale'),
     h('div', { class: 'scale-title' }, `${keyName(p.root, p.scale)} ${sc.name}`),
     h('div', { class: 'scale-mood' }, sc.mood),
     h('div', { class: 'degrees' }, ...chips),
@@ -59,7 +64,7 @@ function renderScaleCard(p) {
 }
 
 function swapTo(id) {
-  changeScale(id);
+  changeKey(selectedKey().root, id, ui.selectedSection);
   toast(`Now in ${SCALES[id].name}. Same numbers, new mood.`);
 }
 
@@ -71,7 +76,7 @@ function renderPalette(p) {
     h('button', { class: 'btn' + (ui.chordType === id ? ' on' : ''), title: t.help, onclick: () => {
       ui.chordType = id;
       // also change the selected slot's type
-      const s = ui.selectedSlot != null ? p.chords.slots[ui.selectedSlot] : null;
+      const s = ui.selectedSlot != null ? store.project.chords.slots[ui.selectedSlot] : null;
       if (s) { s.type = id; previewChord(s.deg, id); commit('chords'); } else renderPalette(p);
     } }, t.name)));
   const grid = h('div', { class: 'chord-grid' });
@@ -96,7 +101,7 @@ function renderPalette(p) {
     selInfo,
     h('div', { class: 'type-row' },
       h('button', { class: 'btn', onclick: autoHarmonize, title: 'Look at your melody notes and pick chords that contain them' }, '✨ Chords for my melody'),
-      h('button', { class: 'btn', onclick: () => { p.chords.slots = []; commit('chords'); } }, 'Clear chords')));
+      h('button', { class: 'btn', onclick: () => { store.project.chords.slots = []; commit('chords'); } }, 'Clear chords')));
 }
 
 function placeChord(deg, type) {
@@ -111,13 +116,14 @@ function placeChord(deg, type) {
 
 function renderSuggestions(p) {
   const card = document.getElementById('suggest-card');
-  const steps = scaleSteps(harmonyScaleId(p.scale));
   const slots = p.chords.slots;
   const n = slotCount(p);
   // Which slot are we filling, and what came before it?
   let target = ui.selectedSlot;
   if (target == null) { target = 0; while (target < n && slots[target]) target++; }
   if (target >= n) target = null;
+  const k = target != null ? keyAt(p, target * p.chords.slotSteps) : selectedKey();
+  const steps = scaleSteps(harmonyScaleId(k.scale));
   let prev = null;
   if (target != null) { for (let i = target - 1; i >= 0; i--) if (slots[i]) { prev = slots[i].deg; break; } }
   else { for (let i = n - 1; i >= 0; i--) if (slots[i]) { prev = slots[i].deg; break; } }
@@ -130,10 +136,10 @@ function renderSuggestions(p) {
       const fn = chordFunction(deg, steps);
       const el = h('div', { class: 'sugg-item', title: target != null ? `Click to place in slot ${target + 1}` : 'Click to hear' },
         h('span', { class: 'rn' }, romanNumeral(steps, deg)),
-        h('div', {}, h('div', { style: { fontSize: '12px' } }, chordName(p.root, p.scale, deg)), h('div', { class: 'why' }, why)));
+        h('div', {}, h('div', { style: { fontSize: '12px' } }, chordName(k.root, k.scale, deg)), h('div', { class: 'why' }, why)));
       el.style.setProperty('--fn', FUNCTION_INFO[fn].color);
       el.addEventListener('click', () => {
-        previewChord(deg, 'triad');
+        previewChord(deg, 'triad', 0.9, target != null ? target * p.chords.slotSteps : null);
         if (target != null) {
           slots[target] = { deg, type: ui.chordType };
           ui.selectedSlot = null;
@@ -185,21 +191,19 @@ function autoHarmonize() {
   const p = store.project;
   const c = p.chords;
   const n = slotCount(p);
-  const scaleS = scaleSteps(p.scale);
   const bySlot = Array.from({ length: n }, () => []);
   for (const t of p.tracks) {
     if (t.mute) continue;
     for (const note of t.notes) {
       if (note.step >= loopSteps()) continue;
       const slot = Math.floor(note.step / c.slotSteps);
-      const semis = scaleS[mod(note.deg, scaleS.length)] + (note.alt || 0);
       const onBeat = note.step % 4 === 0 ? 1.5 : 1;
       const slotStart = note.step % c.slotSteps === 0 ? 1.5 : 1;
-      bySlot[slot].push({ pc: mod(p.root + semis, 12), weight: Math.min(note.len, 8) * onBeat * slotStart });
+      bySlot[slot].push({ pc: mod(noteMidi(p, t, note), 12), weight: Math.min(note.len, 8) * onBeat * slotStart });
     }
   }
   if (!bySlot.some(s => s.length)) { toast('Write some melody notes first, then I can pick chords for them.'); return; }
-  const ranked = harmonize(p.root, p.scale, bySlot);
+  const ranked = harmonize(i => keyAt(p, i * c.slotSteps), bySlot);
   c.slots = ranked.map((r, i) => (bySlot[i].length ? { deg: r[0].deg, type: ui.chordType } : (c.slots[i] || null)));
   commit('chords');
   toast('Picked chords that contain your melody notes. Ctrl+Z to undo.');

@@ -75,6 +75,34 @@ export function midiName(midi, flats = false) {
   return names[mod(midi, 12)] + (Math.floor(midi / 12) - 1);
 }
 
+// Name a MIDI note the way it's spelled in a key: scale notes use the scale's spelling,
+// other notes are written as the sharp of the scale note below or the flat of the one above.
+export function spellMidi(midi, root, scaleId) {
+  const steps = scaleSteps(scaleId);
+  const names = spellScale(root, scaleId);
+  const pc = mod(midi, 12);
+  const rel = mod(pc - root, 12);
+  let name;
+  const i = steps.indexOf(rel);
+  if (i >= 0) name = names[i];
+  else if (steps.length === 7) {
+    // use the usual interval name (♭3, ♯4, ♭6…) to pick the letter: E♭ in C major, F♯ in D minor
+    const d = Number(INTERVAL_NAMES[rel].replace(/[♭♯]/, '')) - 1;
+    const L = LETTERS.indexOf(names[d][0]);
+    name = LETTERS[L] + ACC[mod(pc - LETTER_PC[L] + 6, 12) - 6];
+  }
+  else if (steps.includes(mod(rel - 1, 12))) name = names[steps.indexOf(mod(rel - 1, 12))] + '♯';
+  else if (steps.includes(mod(rel + 1, 12))) name = names[steps.indexOf(mod(rel + 1, 12))] + '♭';
+  else name = (prefersFlats(root, scaleId) ? PC_FLAT : PC_SHARP)[pc];
+  name = name.replace('♯♭', '').replace('♭♯', '').replace('♯♯', '𝄪').replace('♭♭', '𝄫');
+  // octave follows the letter: B♯3 sounds like C4, C♭5 sounds like B4
+  const letter = name[0];
+  let oct = Math.floor(midi / 12) - 1;
+  if (letter === 'B' && pc < 3) oct -= 1;
+  if (letter === 'C' && pc > 9) oct += 1;
+  return name + oct;
+}
+
 export function degreeLabel(deg, n) { return String(mod(deg, n) + 1); }
 export function degreeOctave(deg, n) { return Math.floor(deg / n); }
 
@@ -278,17 +306,18 @@ export const PROGRESSIONS = [
 ];
 
 // ---------- Harmonize: pick chords that fit a melody ----------
+// keyFor(i): { root, scale } for slot i (the song can change key).
 // notesBySlot: array of arrays of { pc (0-11 abs), weight }
 // Returns for each slot a ranked list of { deg, score }.
-export function harmonize(root, scaleId, notesBySlot) {
-  const hid = harmonyScaleId(scaleId);
-  const steps = scaleSteps(hid);
-  const n = steps.length;
-  const chordPcs = [];
-  for (let d = 0; d < n; d++) chordPcs.push(chordSemis(steps, d, 'triad').map(s => mod(root + s, 12)));
+export function harmonize(keyFor, notesBySlot) {
   const out = [];
   let prev = null;
   notesBySlot.forEach((notes, i) => {
+    const { root, scale } = keyFor(i);
+    const steps = scaleSteps(harmonyScaleId(scale));
+    const n = steps.length;
+    const chordPcs = [];
+    for (let d = 0; d < n; d++) chordPcs.push(chordSemis(steps, d, 'triad').map(s => mod(root + s, 12)));
     const scores = [];
     for (let d = 0; d < n; d++) {
       let s = 0;

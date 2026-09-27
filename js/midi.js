@@ -67,15 +67,20 @@ function nameEvent(name) {
 }
 
 // groups: [{ name, channel, program?, notes: [{ step, dur, midi, vel }] }]
-export function buildMidiFile({ bpm, loops, loopSteps, keySig, minor, groups }) {
+// keySigs: [{ step, sf (sharps > 0, flats < 0), minor }] (one per key section)
+export function buildMidiFile({ bpm, loops, loopSteps, keySigs, groups }) {
   const stepTicks = PPQ / 4;
   const tempo = Math.round(60000000 / bpm);
   const conductor = [
     { tick: 0, order: 0, data: [0xff, 0x51, 0x03, (tempo >> 16) & 255, (tempo >> 8) & 255, tempo & 255] },
     { tick: 0, order: 0, data: [0xff, 0x58, 0x04, 4, 2, 24, 8] },                     // 4/4
-    { tick: 0, order: 0, data: [0xff, 0x59, 0x02, keySig & 255, minor ? 1 : 0] },      // key signature
     nameEvent('Bangerator'),
   ];
+  for (let l = 0; l < loops; l++) {
+    for (const k of keySigs) {
+      conductor.push({ tick: Math.round((l * loopSteps + k.step) * (PPQ / 4)), order: 0, data: [0xff, 0x59, 0x02, k.sf & 255, k.minor ? 1 : 0] });
+    }
+  }
   const chunks = [trackChunk(conductor)];
   for (const g of groups) {
     const evs = [nameEvent(g.name)];

@@ -1,6 +1,6 @@
 # Bangerator
 
-A composing tool that uses **scale degrees instead of note names**. You pick a key and a scale, write melodies and basslines as numbers (1 = home), and swap scales to hear the same loop in a different mood. It also has a chord lane with suggestions, a circle of fifths, an FL-style drum and sample step sequencer, a small synth for sound design, MIDI/WAV export, and a beginner music theory guide that assumes no prior knowledge.
+A composing and sketching tool that uses **scale degrees instead of note names**. You pick a key and a scale, write melodies and basslines as numbers (1 = home), and swap scales to hear the same loop in a different mood. Tracks can also be switched to a normal chromatic piano roll. Songs can change key or scale at any bar, and a Mix & FX tab adds drive, filter, reverb, delay and sidechain-style pump per channel. It also has a chord lane with suggestions, a circle of fifths, an FL-style drum and sample step sequencer, a small synth for sound design, MIDI/WAV export, and a beginner music theory guide that assumes no prior knowledge.
 
 ## Hosting
 
@@ -27,12 +27,12 @@ python -m http.server 8000
 | `js/sequencer.js` | Look-ahead scheduler, event builder, offline WAV render |
 | `js/midi.js` | Web MIDI output and `.mid` file writer |
 | `js/state.js` | Project model, undo/redo, autosave (localStorage), user samples (IndexedDB) |
-| `js/ui/*` | Circle of fifths, scale roll, compose lanes, sidebar, sound design |
+| `js/ui/*` | Circle of fifths, scale/piano roll, compose lanes (key, chords, tracks, drums), sidebar, mixer, sound design |
 | `samples/` | Piano, acoustic guitar and electric bass multisamples (see `samples/CREDITS.txt`) |
 
 ## Data model in one sentence
 
-A melody note is stored as `{ step, len, deg, alt }`, where `deg` is the scale-degree index (0 = degree 1, 7 = degree 1 one octave up in a 7-note scale). Pitch is computed only at play time from key + scale + track octave, so changing key or scale never breaks the song.
+A note in a Scale track is stored as `{ step, len, deg, alt }`, where `deg` is the scale-degree index (0 = degree 1, 7 = degree 1 one octave up in a 7-note scale). Its pitch is computed only at play time from the key section it's in + track octave, so changing key or scale never breaks the song. A note in a Piano track is `{ step, len, midi }` and never moves. Key sections live in `project.keyChanges` (`[{ bar, root, scale }]`, with `project.root/scale` as the first section).
 
 ## Browser support
 

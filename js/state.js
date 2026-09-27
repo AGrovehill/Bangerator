@@ -5,7 +5,7 @@ import { DRUM_KINDS, DRUM_PARAMS } from './drums.js';
 import { SCALES, scaleSteps, degToSemis, semisToNearestDeg, harmonyScaleId, mod } from './theory.js';
 
 export const STEPS_PER_BAR = 16;
-export const MAX_BARS = 16;
+export const MAX_BARS = 32;
 
 const synth = (name, over) => ({ name, kind: 'synth', patch: { ...DEFAULT_PATCH, ...over } });
 
@@ -31,8 +31,13 @@ export const uid = (p = 'id') => `${p}${(idCounter++).toString(36)}`;
 
 export const TRACK_COLORS = ['#ff6b6b', '#4dabf7', '#ffd43b', '#69db7c', '#da77f2', '#ffa94d', '#63e6be', '#f783ac'];
 
-export function newTrack(name, patch, octave, color, notes = []) {
-  return { id: uid('t'), name, patch, octave, range: 2, volume: 0.8, pan: 0, mute: false, solo: false, color, notes, collapsed: false };
+// Per-channel effect settings (see the Mix & FX tab).
+export const defaultFx = (over = {}) => ({ drive: 0, cutoff: 20000, reverb: 0, delay: 0, pump: 0, ...over });
+
+// mode 'scale': notes are { step, len, deg, alt } (scale degrees, follow the key)
+// mode 'piano': notes are { step, len, midi } (fixed pitches, like a normal piano roll)
+export function newTrack(name, patch, octave, color, notes = [], mode = 'scale') {
+  return { id: uid('t'), name, patch, octave, range: 2, volume: 0.8, pan: 0, mute: false, solo: false, color, notes, mode, fx: defaultFx() };
 }
 
 function beat(pattern) { // "x...x...x...x..." -> velocities
@@ -52,6 +57,9 @@ const LOVE_PARADE_RIFF = [
   [50, 1, 2], [50, 1, 4], [51, 1, 5], [51, 1, 3], [52, 1, 4], [52, 1, 6], [54, 1, 3], [54, 1, 5],
   [56, 2, 2], [56, 2, 4], [59, 1, 2], [59, 1, 4], [62, 1, 2], [62, 1, 4],
 ];
+
+// Shared effect buses: one reverb and one tempo-synced delay that every channel can send to.
+export const defaultFxBus = () => ({ reverbSize: 2.2, delaySteps: 3, delayFeedback: 0.35, pumpRelease: 0.5, master: 0.8 });
 
 export function defaultProject() {
   const n = (step, len, deg) => ({ step, len, deg, vel: 0.85 });
@@ -75,28 +83,31 @@ export function defaultProject() {
     if (r.kind === 'chat') r.vol = 0.4;
     if (r.kind === 'ohat') r.vol = 0.45;
   }
+  const riffTrack = newTrack('Riff', 'stab', 4, TRACK_COLORS[0], riff);
+  riffTrack.fx = defaultFx({ reverb: 0.2, delay: 0.25 });
+  const bassTrack = newTrack('Bass', 'sawbass', 2, TRACK_COLORS[1], bass);
+  bassTrack.fx = defaultFx({ pump: 0.3 });
   return {
     version: 1,
     name: 'Meet Her at the Love Parade (riff)',
     bpm: 130,
     root: 2, // D
     scale: 'mixolydianFlat6',
-    noteMode: 'degrees', // 'degrees' = notes follow the scale; 'fixed' = notes keep their pitch (DAW style)
+    keyChanges: [], // later key/scale sections: [{ bar, root, scale }]
+    fxBus: defaultFxBus(),
     bars: 4,
     swing: 0,
     showNoteNames: false,
     patches: builtinPatches(),
     drumParams: structuredClone(DRUM_PARAMS),
-    tracks: [
-      newTrack('Riff', 'stab', 4, TRACK_COLORS[0], riff),
-      newTrack('Bass', 'sawbass', 2, TRACK_COLORS[1], bass),
-    ],
+    tracks: [riffTrack, bassTrack],
     chords: {
       patch: 'pad', octave: 3, volume: 0.45, pan: 0, mute: false, solo: false,
       style: 'block', slotSteps: 16, voiceLead: true,
       slots: [0, 0, 0, 0].map(deg => ({ deg, type: 'triad' })),
+      fx: defaultFx({ reverb: 0.35, pump: 0.6 }),
     },
-    drums: { volume: 0.9, rows },
+    drums: { volume: 0.9, rows, fx: defaultFx({ reverb: 0.05 }) },
   };
 }
 
@@ -156,6 +167,23 @@ export function setProject(p, keepHistory = false) {
 function migrate(p) {
   const d = defaultProject();
   for (const k of Object.keys(d)) if (p[k] === undefined) p[k] = d[k];
+  p.fxBus = { ...defaultFxBus(), ...p.fxBus };
+  // The old global "keep their pitch" switch became per-track piano-roll mode.
+  const fixed = p.noteMode === 'fixed';
+  delete p.noteMode;
+  for (const t of p.tracks) {
+    t.fx = defaultFx(t.fx);
+    if (!t.mode) {
+      t.mode = 'scale';
+      if (fixed) {
+        t.notes = t.notes.map(n => ({ step: n.step, len: n.len, vel: n.vel,
+          midi: 12 * (t.octave + 1) + p.root + degToSemis(scaleSteps(p.scale), n.deg) + (n.alt || 0) }));
+        t.mode = 'piano';
+      }
+    }
+  }
+  p.chords.fx = defaultFx(p.chords.fx);
+  p.drums.fx = defaultFx(p.drums.fx);
   // make sure built-in patches exist (older saves)
   const b = builtinPatches();
   for (const k of Object.keys(b)) if (!p.patches[k]) p.patches[k] = b[k];
@@ -179,34 +207,67 @@ export function loadSaved() {
   return null;
 }
 
-// ---------- Key and scale changes ----------
-// Two behaviors, picked by project.noteMode:
-//  'degrees' (default): notes are scale degrees, so they follow the new key/scale. Same loop, new mood.
-//     Scales of a different size move each note to the nearest pitch (and remember the original).
-//  'fixed': notes keep their exact pitch, like the piano roll in most DAWs. After a change, notes that
-//     aren't in the new scale are stored as accidentals (alt = ±1) and drawn as out-of-scale.
-export function changeKey(newRoot, newScale) {
+// ---------- Key sections ----------
+// The song can change key/scale at chosen bars. Section 0 is project.root/scale (from bar 1);
+// project.keyChanges holds the later ones: [{ bar (0-based), root, scale }], sorted by bar.
+export function sections(p = store.project) {
+  return [{ bar: 0, root: p.root, scale: p.scale }, ...p.keyChanges.filter(k => k.bar > 0 && k.bar < p.bars)];
+}
+
+// Index of the section that is active at `step`.
+export function sectionIndexAt(p, step) {
+  const secs = sections(p);
+  let i = 0;
+  for (let k = 1; k < secs.length; k++) if (secs[k].bar * STEPS_PER_BAR <= step) i = k;
+  return i;
+}
+
+export function keyAt(p, step) { return sections(p)[sectionIndexAt(p, step)]; }
+
+// Step range [start, end) covered by section i.
+export function sectionRange(p, i) {
+  const secs = sections(p);
+  const start = secs[i].bar * STEPS_PER_BAR;
+  const end = i + 1 < secs.length ? secs[i + 1].bar * STEPS_PER_BAR : p.bars * STEPS_PER_BAR;
+  return [start, end];
+}
+
+function sectionObj(p, i) { return i === 0 ? p : sections(p)[i]; }
+
+export function addKeyChange(bar) {
   const p = store.project;
-  const oldSteps = scaleSteps(p.scale);
+  if (bar <= 0 || bar >= p.bars || p.keyChanges.some(k => k.bar === bar)) return -1;
+  const { root, scale } = keyAt(p, bar * STEPS_PER_BAR);
+  p.keyChanges.push({ bar, root, scale });
+  p.keyChanges.sort((a, b) => a.bar - b.bar);
+  commit('all');
+  return sections(p).findIndex(s => s.bar === bar);
+}
+
+export function removeKeyChange(i) {
+  const p = store.project;
+  if (i <= 0) return;
+  const k = sections(p)[i];
+  p.keyChanges = p.keyChanges.filter(x => x !== k);
+  commit('all');
+}
+
+// Change the key and/or scale of one section.
+// Scale-mode tracks store scale degrees, so they follow automatically: same notes, new mood.
+// When the new scale has a different number of notes (e.g. 7 -> 5), notes in that section move to the
+// nearest pitch and remember the original, so switching back restores the melody.
+// Piano-roll tracks store fixed pitches and never move (that's how most DAWs behave).
+export function changeKey(newRoot, newScale, i = 0) {
+  const p = store.project;
+  const sec = sectionObj(p, i);
+  const [start, end] = sectionRange(p, i);
+  const oldSteps = scaleSteps(sec.scale);
   const newSteps = scaleSteps(newScale);
-  if (p.noteMode === 'fixed') {
-    // move the root the short way round and compensate with the track octave, so no pitch changes
-    const raw = newRoot - p.root;
-    const wrapped = mod(raw + 6, 12) - 6;
-    const octShift = (raw - wrapped) / 12;
+  if (oldSteps.length !== newSteps.length) {
     for (const t of p.tracks) {
-      t.octave -= octShift;
+      if (t.mode === 'piano') continue;
       for (const note of t.notes) {
-        const rel = degToSemis(oldSteps, note.deg) + (note.alt || 0) - wrapped;
-        note.deg = semisToNearestDeg(newSteps, rel);
-        note.alt = rel - degToSemis(newSteps, note.deg);
-        delete note.src;
-      }
-    }
-  } else if (oldSteps.length !== newSteps.length) {
-    for (const t of p.tracks) {
-      for (const note of t.notes) {
-        // Remember where the note came from, so going 7 -> 5 -> 7 notes gives the original melody back.
+        if (note.step < start || note.step >= end) continue;
         if (note.src && note.src.n === newSteps.length) {
           note.deg = note.src.deg;
           note.alt = note.src.alt;
@@ -220,30 +281,104 @@ export function changeKey(newRoot, newScale) {
       }
     }
   }
-  const oldH = scaleSteps(harmonyScaleId(p.scale)).length;
+  const oldH = scaleSteps(harmonyScaleId(sec.scale)).length;
   const newH = scaleSteps(harmonyScaleId(newScale)).length;
-  if (oldH !== newH) for (const s of p.chords.slots) if (s) s.deg = mod(s.deg, newH);
-  p.root = newRoot;
-  p.scale = newScale;
+  if (oldH !== newH) {
+    const c = p.chords;
+    c.slots.forEach((s, k) => { if (s && k * c.slotSteps >= start && k * c.slotSteps < end) s.deg = mod(s.deg, newH); });
+  }
+  sec.root = newRoot;
+  sec.scale = newScale;
   commit('all');
 }
 
-export const changeScale = newScale => changeKey(store.project.root, newScale);
-export const changeRoot = newRoot => changeKey(newRoot, store.project.scale);
-
-export function outOfScaleCount() {
-  return store.project.tracks.reduce((a, t) => a + t.notes.filter(n => n.alt).length, 0);
+// ---------- Scale mode <-> piano roll mode ----------
+export function scaleNoteMidi(p, track, note) {
+  const k = keyAt(p, note.step);
+  return 12 * (track.octave + 1) + k.root + degToSemis(scaleSteps(k.scale), note.deg) + (note.alt || 0);
 }
 
-// Snap every out-of-scale note to the nearest scale note (what DAWs call "fold/snap to scale").
+// Express a MIDI pitch as degree + accidental in the key at `step`.
+export function midiToDegree(p, track, midi, step) {
+  const k = keyAt(p, step);
+  const steps = scaleSteps(k.scale);
+  const rel = midi - (12 * (track.octave + 1) + k.root);
+  const deg = semisToNearestDeg(steps, rel);
+  return { deg, alt: rel - degToSemis(steps, deg) };
+}
+
+export function setTrackMode(track, mode) {
+  const p = store.project;
+  if ((track.mode || 'scale') === mode) return;
+  if (mode === 'piano') {
+    track.notes = track.notes.map(n => ({ step: n.step, len: n.len, vel: n.vel, midi: scaleNoteMidi(p, track, n) }));
+  } else {
+    track.notes = track.notes.map(n => ({ step: n.step, len: n.len, vel: n.vel, ...midiToDegree(p, track, n.midi, n.step) }));
+  }
+  track.mode = mode;
+  commit('all');
+}
+
+export function inScale(p, midi, step) {
+  const k = keyAt(p, step);
+  return scaleSteps(k.scale).includes(mod(midi - k.root, 12));
+}
+
+export function outOfScaleCount() {
+  const p = store.project;
+  let n = 0;
+  for (const t of p.tracks) for (const note of t.notes) {
+    if (note.step >= p.bars * STEPS_PER_BAR) continue;
+    if (t.mode === 'piano' ? !inScale(p, note.midi, note.step) : note.alt) n++;
+  }
+  return n;
+}
+
+// Move every out-of-scale note to the nearest scale note (what DAWs call "snap/fold to scale").
 export function snapToScale() {
-  for (const t of store.project.tracks) for (const n of t.notes) { n.alt = 0; delete n.src; }
-  commit('notes');
+  const p = store.project;
+  for (const t of p.tracks) for (const n of t.notes) {
+    if (t.mode === 'piano') {
+      if (!inScale(p, n.midi, n.step)) n.midi = scaleNoteMidi(p, t, { step: n.step, deg: midiToDegree(p, t, n.midi, n.step).deg });
+    } else { n.alt = 0; delete n.src; }
+  }
+  commit('all');
 }
 
 export function setBars(bars) {
   store.project.bars = Math.max(1, Math.min(MAX_BARS, bars));
   commit('all');
+}
+
+// Double the loop: everything in it (notes, chords, drums, key changes) is copied after itself.
+export function duplicateLoop() {
+  const p = store.project;
+  const L = p.bars * STEPS_PER_BAR;
+  if (p.bars * 2 > MAX_BARS) return false;
+  for (const t of p.tracks) {
+    const src = t.notes.filter(n => n.step < L);
+    t.notes = [...src, ...src.map(n => ({ ...n, step: n.step + L }))];
+  }
+  const c = p.chords;
+  const slotN = Math.ceil(L / c.slotSteps);
+  const slots = c.slots.slice(0, slotN);
+  while (slots.length < slotN) slots.push(null);
+  c.slots = [...slots, ...slots.map(s => (s ? { ...s } : null))];
+  for (const r of p.drums.rows) {
+    const s = Array.from({ length: L }, (_, i) => r.steps[i] || 0);
+    r.steps = [...s, ...s];
+  }
+  const secs = sections(p);
+  p.keyChanges = [...p.keyChanges.filter(k => k.bar < p.bars),
+    ...secs.map(k => ({ bar: k.bar + p.bars, root: k.root, scale: k.scale }))];
+  // drop the copy of the first section if it doesn't actually change anything
+  p.keyChanges = p.keyChanges.filter((k, idx, arr) => {
+    const prev = idx === 0 ? { root: p.root, scale: p.scale } : arr[idx - 1];
+    return !(k.bar === p.bars && k.root === prev.root && k.scale === prev.scale);
+  });
+  p.bars *= 2;
+  commit('all');
+  return true;
 }
 
 export function loopSteps() { return store.project.bars * STEPS_PER_BAR; }

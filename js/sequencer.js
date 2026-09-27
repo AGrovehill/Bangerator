@@ -3,32 +3,35 @@
 // The same event builder is used for live playback, WAV rendering and MIDI export.
 
 import { audio, playNote, playBuffer, Mixer, ensureSampleSet, loadSampleSet } from './audio.js';
-import { store, loopSteps, STEPS_PER_BAR } from './state.js';
-import { scaleSteps, degToSemis, harmonyScaleId, chordSemis, voiceLead, mod } from './theory.js';
+import { store, loopSteps, STEPS_PER_BAR, keyAt, scaleNoteMidi } from './state.js';
+import { scaleSteps, harmonyScaleId, chordSemis, voiceLead, mod } from './theory.js';
 import { renderDrumKit, DRUM_KINDS } from './drums.js';
 import { midiOut } from './midi.js';
 
 export const stepDuration = bpm => 60 / bpm / 4; // 16th notes
 
+// Scale-mode notes are degrees in the key at their position; piano-roll notes are fixed MIDI pitches.
 export function noteMidi(p, track, note) {
-  return 12 * (track.octave + 1) + p.root + degToSemis(scaleSteps(p.scale), note.deg) + (note.alt || 0);
+  return track.mode === 'piano' ? note.midi : scaleNoteMidi(p, track, note);
 }
 
-// Pitches for each chord slot, voice-led across the loop. Returns array of { midis, deg, type } | null
+// Pitches for each chord slot, voice-led across the loop. Each slot uses the key at its position.
+// Returns array of { midis, deg, type } | null
 export function chordVoicings(p) {
-  const steps = scaleSteps(harmonyScaleId(p.scale));
   const c = p.chords;
-  const base = 12 * (c.octave + 1) + p.root;
   const slotCount = Math.ceil(loopSteps() / c.slotSteps);
   const out = [];
   let prevCenter = null;
   for (let i = 0; i < slotCount; i++) {
     const s = c.slots[i];
     if (!s) { out.push(null); continue; }
+    const k = keyAt(p, i * c.slotSteps);
+    const steps = scaleSteps(harmonyScaleId(k.scale));
+    const base = 12 * (c.octave + 1) + k.root;
     let midis = chordSemis(steps, s.deg, s.type).map(x => base + x);
     if (c.voiceLead) {
-      const lo = base - 7, hi = base + 21;
-      midis = voiceLead(midis, prevCenter ?? midis.reduce((a, b) => a + b, 0) / midis.length, lo, hi);
+      const center = 12 * (c.octave + 1) + 7; // keep chords around the same register in every key
+      midis = voiceLead(midis, prevCenter ?? center, center - 12, center + 16);
     }
     prevCenter = midis.reduce((a, b) => a + b, 0) / midis.length;
     out.push({ midis, deg: s.deg, type: s.type });
@@ -41,7 +44,7 @@ function audibleSet(items) {
   return x => !x.mute && (!anySolo || x.solo);
 }
 
-// Build every event in one loop pass: [{ step, offset (in steps), dur (in steps), kind, ... }]
+// Build every event in one loop pass: [{ step, dur (in steps), kind, ... }]
 export function buildEvents(p) {
   const L = loopSteps();
   const events = [];
@@ -103,12 +106,9 @@ export const transport = {
   playing: false,
   step: 0,          // next step to schedule (loop-relative)
   nextTime: 0,      // audio time of that step
-  startTime: 0,
   timer: null,
   events: null,     // cached events, rebuilt when the project changes
   visualQueue: [],  // { step, time } for the playhead
-  onStep: null,
-  liveStops: [],
 };
 
 export function invalidateEvents() { transport.events = null; }
@@ -127,15 +127,17 @@ function eventsFor(step) {
   return transport.events.get(step) || [];
 }
 
-// Apply volume/pan/mute to the live mixer strips.
+// Apply volume/pan/mute/effects to the mixer (live, or the offline one used for WAV export).
 export function syncMixer(mixer = audio.mixer, p = store.project) {
   if (!mixer) return;
   const melodic = [...p.tracks, p.chords];
   const aud = audibleSet(melodic);
-  p.tracks.forEach(t => mixer.setStrip(t.id, t.volume, t.pan, aud(t)));
-  mixer.setStrip('chords', p.chords.volume, p.chords.pan, aud(p.chords));
+  p.tracks.forEach(t => mixer.setStrip(t.id, t.volume, t.pan, aud(t), t.fx));
+  mixer.setStrip('chords', p.chords.volume, p.chords.pan, aud(p.chords), p.chords.fx);
+  mixer.setStrip('drums', p.drums.volume, 0, true, p.drums.fx);
   const dAud = audibleSet(p.drums.rows);
-  p.drums.rows.forEach(r => mixer.setStrip(r.id, r.vol * p.drums.volume, 0, dAud(r)));
+  p.drums.rows.forEach(r => mixer.setRow(r.id, r.vol, dAud(r)));
+  mixer.setBus(p.fxBus, stepDuration(p.bpm));
 }
 
 function drumBuffer(row) {
@@ -149,6 +151,7 @@ function scheduleStep(step, time) {
   const p = store.project;
   const sd = stepDuration(p.bpm);
   const ctx = audio.ctx;
+  if (step % 4 === 0) audio.mixer.pumpAt(time, sd * 4, p.fxBus.pumpRelease);
   for (const e of eventsFor(step)) {
     const t = time + (e.step - step + swingOffset(p, e.step)) * sd;
     if (e.kind === 'note') {
@@ -160,7 +163,7 @@ function scheduleStep(step, time) {
       if (!e.audible) continue;
       if (!midiOut.localMute) {
         if (e.row.kind === 'chat' && openHat) { openHat.g.gain.setTargetAtTime(0, t, 0.01); openHat = null; }
-        const v = playBuffer(ctx, audio.mixer.strip(e.rowId).gain, drumBuffer(e.row), t, e.vel, e.row.pitch);
+        const v = playBuffer(ctx, audio.mixer.rowStrip(e.rowId).gain, drumBuffer(e.row), t, e.vel, e.row.pitch);
         if (e.row.kind === 'ohat') openHat = v;
       }
       midiOut.note(9, e.gm, e.vel, t, sd);
@@ -205,13 +208,15 @@ export function stop() {
   transport.timer = null;
   transport.visualQueue = [];
   midiOut.allOff();
-  // quickly fade the master so ringing notes stop cleanly
-  const m = audio.mixer?.master;
-  if (m) {
+  const mx = audio.mixer;
+  if (mx) {
+    mx.resetPump();
+    // quickly fade the master so ringing notes and echoes stop cleanly
     const t = audio.ctx.currentTime;
-    m.gain.cancelScheduledValues(t);
-    m.gain.setTargetAtTime(0, t, 0.02);
-    m.gain.setTargetAtTime(0.8, t + 0.15, 0.01);
+    const m = mx.master.gain;
+    m.cancelScheduledValues(t);
+    m.setTargetAtTime(0, t, 0.02);
+    m.setTargetAtTime(store.project.fxBus.master, t + 0.15, 0.01);
   }
 }
 
@@ -231,7 +236,7 @@ export async function renderWav(loops = 2) {
   const p = store.project;
   const sd = stepDuration(p.bpm);
   const L = loopSteps();
-  const tail = 2;
+  const tail = Math.max(2, p.fxBus.reverbSize + 1);
   const sr = 44100;
   const total = L * sd * loops + tail;
   const ctx = new OfflineAudioContext(2, Math.ceil(total * sr), sr);
@@ -244,18 +249,20 @@ export async function renderWav(loops = 2) {
   const sets = new Set(events.map(e => p.patches[e.patch]).filter(x => x?.kind === 'sampler').map(x => x.set));
   await Promise.all([...sets].map(loadSampleSet));
 
+  const start = 0.05;
+  for (let s = 0; s < L * loops; s += 4) mixer.pumpAt(start + s * sd, sd * 4, p.fxBus.pumpRelease);
   for (let loop = 0; loop < loops; loop++) {
     let open = null;
     for (const e of events) {
       if (!e.audible) continue;
-      const t = 0.05 + (loop * L + e.step + swingOffset(p, e.step)) * sd;
+      const t = start + (loop * L + e.step + swingOffset(p, e.step)) * sd;
       if (e.kind === 'note') {
         const patch = p.patches[e.patch];
         if (patch) playNote(ctx, mixer.strip(e.trackId).gain, patch, e.midi, t, e.dur * sd * 0.98, e.vel);
       } else {
         const buf = e.row.kind === 'sample' ? audio.userBuffers[e.row.sampleId] : kit[e.row.kind];
         if (e.row.kind === 'chat' && open) { open.g.gain.setTargetAtTime(0, t, 0.01); open = null; }
-        const v = playBuffer(ctx, mixer.strip(e.rowId).gain, buf, t, e.vel, e.row.pitch);
+        const v = playBuffer(ctx, mixer.rowStrip(e.rowId).gain, buf, t, e.vel, e.row.pitch);
         if (e.row.kind === 'ohat') open = v;
       }
     }

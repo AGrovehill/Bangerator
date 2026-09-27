@@ -69,7 +69,11 @@ function nearestSample(setId, midi) {
 }
 
 // ---------- Mixer ----------
-// One strip (gain + pan) per track id, all into a master bus with a gentle limiter.
+// Every channel (a track, the chords, the drum group) gets a strip:
+//   input gain -> drive -> low-pass filter -> pump (sidechain-style ducking) -> pan -> master
+//                                                                    \-> reverb send, delay send
+// Drum rows get a small row strip (gain + pan) that feeds the "drums" channel strip.
+// The reverb and delay are shared buses, so every send goes into the same room / echo.
 export class Mixer {
   constructor(ctx) {
     this.ctx = ctx;
@@ -87,27 +91,143 @@ export class Mixer {
     this.limiter.connect(this.analyser);
     this.analyser.connect(ctx.destination);
     this.strips = new Map();
+    this.rows = new Map();
+
+    // reverb bus
+    this.reverb = ctx.createConvolver();
+    this.reverbIn = ctx.createGain();
+    this.reverbIn.connect(this.reverb);
+    this.reverb.connect(this.master);
+    this.reverbSize = 0;
+    this.setReverbSize(2.2);
+
+    // delay bus: delay -> (darkening filter) -> feedback -> delay; output to master
+    this.delayIn = ctx.createGain();
+    this.delay = ctx.createDelay(4);
+    this.delayFilter = ctx.createBiquadFilter();
+    this.delayFilter.type = 'lowpass';
+    this.delayFilter.frequency.value = 5000;
+    this.feedback = ctx.createGain();
+    this.feedback.gain.value = 0.35;
+    this.delayIn.connect(this.delay);
+    this.delay.connect(this.delayFilter);
+    this.delayFilter.connect(this.feedback);
+    this.feedback.connect(this.delay);
+    this.delayFilter.connect(this.master);
   }
+
+  // Synthetic reverb: a burst of stereo noise that fades out over `seconds`.
+  setReverbSize(seconds) {
+    if (Math.abs(seconds - this.reverbSize) < 0.01) return;
+    this.reverbSize = seconds;
+    const sr = this.ctx.sampleRate;
+    const len = Math.max(1, Math.floor(sr * seconds));
+    const buf = this.ctx.createBuffer(2, len, sr);
+    let seed = 99991;
+    for (let c = 0; c < 2; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < len; i++) {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        d[i] = ((seed / 0x3fffffff) - 1) * Math.pow(1 - i / len, 3);
+      }
+    }
+    this.reverb.buffer = buf;
+  }
+
   strip(id) {
     let s = this.strips.get(id);
     if (!s) {
-      const gain = this.ctx.createGain();
-      const pan = this.ctx.createStereoPanner();
-      gain.connect(pan);
-      pan.connect(this.master);
-      s = { gain, pan };
+      const ctx = this.ctx;
+      const gain = ctx.createGain();
+      const drive = ctx.createWaveShaper();
+      drive.oversample = '2x';
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 20000;
+      filter.Q.value = 0.7;
+      const pump = ctx.createGain();
+      const pan = ctx.createStereoPanner();
+      const rev = ctx.createGain(); rev.gain.value = 0;
+      const dly = ctx.createGain(); dly.gain.value = 0;
+      gain.connect(drive).connect(filter).connect(pump).connect(pan).connect(this.master);
+      pan.connect(rev).connect(this.reverbIn);
+      pan.connect(dly).connect(this.delayIn);
+      s = { gain, drive, filter, pump, pan, rev, dly, driveAmt: -1, pumpAmt: 0 };
       this.strips.set(id, s);
     }
     return s;
   }
-  setStrip(id, volume, panValue, audible) {
-    const s = this.strip(id);
-    const g = audible ? volume : 0;
-    if (this.immediate) { s.gain.gain.value = g; s.pan.pan.value = panValue || 0; return; }
-    const t = this.ctx.currentTime;
-    s.gain.gain.setTargetAtTime(g, t, 0.01);
-    s.pan.pan.setTargetAtTime(panValue || 0, t, 0.01);
+
+  // A drum row: its own volume/pan, then into the drum group's channel strip.
+  rowStrip(id) {
+    let r = this.rows.get(id);
+    if (!r) {
+      const gain = this.ctx.createGain();
+      const pan = this.ctx.createStereoPanner();
+      gain.connect(pan).connect(this.strip('drums').gain);
+      r = { gain, pan };
+      this.rows.set(id, r);
+    }
+    return r;
   }
+
+  set(param, v) {
+    if (this.immediate) param.value = v;
+    else param.setTargetAtTime(v, this.ctx.currentTime, 0.015);
+  }
+
+  setRow(id, volume, audible) { this.set(this.rowStrip(id).gain.gain, audible ? volume : 0); }
+
+  // fx: { drive 0..1, cutoff Hz, reverb 0..1, delay 0..1, pump 0..1 }
+  setStrip(id, volume, panValue, audible, fx) {
+    const s = this.strip(id);
+    this.set(s.gain.gain, audible ? volume : 0);
+    this.set(s.pan.pan, panValue || 0);
+    if (!fx) return;
+    if (fx.drive !== s.driveAmt) {
+      s.driveAmt = fx.drive;
+      s.drive.curve = fx.drive > 0 ? driveCurve(fx.drive) : null;
+    }
+    this.set(s.filter.frequency, Math.min(fx.cutoff, this.ctx.sampleRate / 2 - 100));
+    this.set(s.rev.gain, fx.reverb);
+    this.set(s.dly.gain, fx.delay);
+    if (s.pumpAmt && !fx.pump) { s.pump.gain.cancelScheduledValues(0); s.pump.gain.value = 1; }
+    s.pumpAmt = fx.pump;
+  }
+
+  setBus(bus, stepSeconds) {
+    this.setReverbSize(bus.reverbSize);
+    this.set(this.delay.delayTime, Math.min(4, bus.delaySteps * stepSeconds));
+    this.set(this.feedback.gain, bus.delayFeedback);
+    this.set(this.master.gain, bus.master);
+  }
+
+  // Sidechain-style "pump": duck each pumping channel on the beat, then let it swell back.
+  pumpAt(time, beatSeconds, release) {
+    for (const s of this.strips.values()) {
+      if (!s.pumpAmt) continue;
+      const g = s.pump.gain;
+      g.setTargetAtTime(1 - 0.9 * s.pumpAmt, time, 0.005);
+      g.setTargetAtTime(1, time + 0.03, beatSeconds * 0.35 * release);
+    }
+  }
+
+  resetPump() {
+    for (const s of this.strips.values()) { s.pump.gain.cancelScheduledValues(0); s.pump.gain.value = 1; }
+  }
+}
+
+// Soft-clipping curve; more drive = more saturation, output level kept roughly constant.
+function driveCurve(amount) {
+  const k = 1 + amount * 30;
+  const n = 1024;
+  const curve = new Float32Array(n);
+  const norm = Math.tanh(k);
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1;
+    curve[i] = Math.tanh(k * x) / norm;
+  }
+  return curve;
 }
 
 export async function initAudio() {

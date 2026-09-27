@@ -121,7 +121,7 @@ Most music software names notes with letters like C, F♯ or B♭. Bangerator nu
 The demo song is the main riff of “Meet Her at the Love Parade” (Da Hool, 1997). Its scale is <b>D Mixolydian ♭6</b>. It’s two voices a third apart: the top voice moves around <span class="num">7 6 5</span> and the lower one around <span class="num">5 4 3</span>, all over a single D chord. Play it and step through the scales with the ◀ ▶ buttons. The riff keeps its shape because it’s stored as numbers, but every scale gives it a different mood: <b>Major</b> sounds bright, <b>Minor</b> and <b>Dorian</b> sound dark, <b>Harmonic Minor</b> sounds dramatic.</div>
 <h3>Why most music software doesn’t do this</h3>
 <p>Most DAWs (FL Studio, Ableton and so on) store notes as fixed pitches. They can highlight the scale in the piano roll, but when you change the scale your notes stay exactly where they were. Notes that aren’t in the new scale now clash, and you have to find and move each one by hand.</p>
-<p>Bangerator can behave that way too, so you can hear the difference. Above the grid, set <b>“When the scale changes, notes…”</b> to <b>keep their pitch (DAW)</b> and change the scale. The riff doesn’t move, the out-of-scale notes get a red dashed outline, and a counter shows how many there are. <b>Snap to scale</b> moves each one to its nearest scale note, which is what DAWs offer, but that rarely sounds as intended. Switch back to <b>follow the scale</b> and a scale change moves every note to the right place for you.</p>
+<p>Bangerator has both kinds of track so you can hear the difference. Each melody track has a <b>Scale / Piano</b> switch. Set the Riff track to <b>Piano</b>: it becomes a normal piano roll with the 12 notes as rows and the scale highlighted, like in a DAW. Now change the scale. The riff doesn’t move, the notes that no longer fit get a red dashed outline, and a counter above the grid shows how many there are. <b>Snap to scale</b> moves each one to its nearest scale note, which is what DAWs offer, but that rarely sounds as intended. Switch the track back to <b>Scale</b> and every scale change moves the notes to the right place for you.</p>
 <h3>Degrees with their own names</h3>
 <table>
 <tr><th>Degree</th><th>Name</th><th>What it does</th></tr>
@@ -348,7 +348,35 @@ The <b>kick</b> marks the main beats, usually including beat 1. The <b>snare or 
 <p>If a note starts at a higher pitch and quickly slides down, a sine wave becomes the deep “boom” of an <b>808 bass</b>. Bangerator’s “808 Sub” instrument works this way.</p>
 
 <!-- ============================================================ -->
-<h2 id="midi"><span class="n">19</span>MIDI</h2>
+<h2 id="building"><span class="n">19</span>From loop to track: key changes and effects</h2>
+<p>A loop becomes a small track when parts of it change over time. Two quick tools for that:</p>
+<ul>
+<li><b>×2 Duplicate loop</b> copies everything after itself, so a 4-bar loop becomes 8 bars. Then change the copy: add a drum fill, drop the bass, or change the key.</li>
+<li><b>Key changes.</b> The <b>Key</b> lane above the chords shows which key and scale each part of the song is in. Click a bar to start a new section there, then choose its key and scale in the top bar. Scale tracks and chords follow each section automatically. Piano-roll tracks don’t, just like in a DAW.</li>
+</ul>
+<h3>Key changes that work well</h3>
+<table>
+<tr><th>Change</th><th>Effect</th></tr>
+<tr><td>Same key, different scale (D Minor → D Dorian)</td><td>Subtle change of mood. Most notes stay the same.</td></tr>
+<tr><td>Up a whole step (D → E)</td><td>The classic “final chorus” lift. Adds energy.</td></tr>
+<tr><td>Major to its relative minor (C Major → A Minor)</td><td>Same notes, new home. Gentle and natural.</td></tr>
+<tr><td>Major ↔ minor on the same key (D Major → D Minor)</td><td>A dramatic mood switch: the sun goes behind a cloud.</td></tr>
+<tr><td>To a neighbor on the circle of fifths (C → G)</td><td>Smooth, because the keys share 6 of 7 notes.</td></tr>
+</table>
+<h3>Effects</h3>
+<p>The <b>Mix &amp; FX</b> tab has one channel for each track, the chords and the drums. Each channel has:</p>
+<table>
+<tr><th>Effect</th><th>What it does</th><th>Try it on</th></tr>
+<tr><td>Drive</td><td>Saturation or distortion: adds harmonics, so the sound gets warmer, then grittier.</td><td>Basses, drums</td></tr>
+<tr><td>Filter</td><td>Removes high frequencies. Lower settings make a channel darker and push it into the background.</td><td>Pads, anything that feels too bright</td></tr>
+<tr><td>Reverb</td><td>Adds the sound of a room or hall around the sound.</td><td>Leads, chords, claps. Keep bass and kick dry.</td></tr>
+<tr><td>Delay</td><td>Echoes timed to the tempo. Dotted 1/8 is the classic dance-music setting.</td><td>Leads, riffs</td></tr>
+<tr><td>Pump</td><td>Ducks the channel on every beat and lets it swell back. This is the “sidechain” sound of house and trance, where everything breathes with the kick.</td><td>Pads, chords, bass</td></tr>
+</table>
+<p>Reverb and delay are shared: every channel sends some of its sound into the same room and the same echo, which helps a mix sound like it was played in one place.</p>
+
+<!-- ============================================================ -->
+<h2 id="midi"><span class="n">20</span>MIDI</h2>
 <p><b>MIDI</b> is a format for musical instructions, not sound. A MIDI file records which notes to play, when, for how long and how hard. Any instrument or software that understands MIDI can play it back with its own sounds.</p>
 <ul>
 <li><b>Export MIDI</b> saves your song as a <code>.mid</code> file that you can open in FL Studio, Ableton, Logic, GarageBand and most other music software.</li>
@@ -357,7 +385,7 @@ The <b>kick</b> marks the main beats, usually including beat 1. The <b>snare or 
 <p>MIDI numbers notes from 0 to 127. Middle C is 60, each half step adds 1, and each octave adds 12.</p>
 
 <!-- ============================================================ -->
-<h2 id="cheat"><span class="n">20</span>Quick reference</h2>
+<h2 id="cheat"><span class="n">21</span>Quick reference</h2>
 <table>
 <tr><th>For a sound that’s…</th><th>Try</th></tr>
 <tr><td>Happy, uplifting</td><td>Major or Lydian. I–V–vi–IV.</td></tr>

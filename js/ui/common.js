@@ -1,7 +1,7 @@
 // Shared UI state and helpers (auditioning notes/chords, toasts, modals).
 
 import { audio, playNote, ensureSampleSet, initAudio } from '../audio.js';
-import { store } from '../state.js';
+import { store, sections, keyAt, STEPS_PER_BAR } from '../state.js';
 import { scaleSteps, degToSemis, harmonyScaleId, chordSemis } from '../theory.js';
 import { syncMixer } from '../sequencer.js';
 
@@ -12,22 +12,38 @@ export const ui = {
   cellW: 26,
   rowH: 17,
   soundPatchId: 'keys',
+  selectedSection: 0, // which key section the top bar and sidebar are editing
 };
+
+// The key section being edited (top bar, sidebar, circle of fifths).
+export function selectedKey() {
+  const secs = sections(store.project);
+  if (ui.selectedSection >= secs.length) ui.selectedSection = 0;
+  return secs[ui.selectedSection];
+}
+
+// Key used when auditioning: the one at `step` if given, else the edited section's.
+function previewKey(step) {
+  return step != null ? keyAt(store.project, step) : selectedKey();
+}
 
 export function patchOf(id) { return store.project.patches[id]; }
 
-export function previewDeg(track, deg, alt = 0, dur = 0.35) {
+export function previewDeg(track, deg, alt = 0, dur = 0.35, step = null) {
+  const k = previewKey(step);
+  return previewTrackMidi(track, 12 * (track.octave + 1) + k.root + degToSemis(scaleSteps(k.scale), deg) + alt, dur);
+}
+
+export function previewTrackMidi(track, midi, dur = 0.35) {
   if (!audio.ctx) return;
-  const p = store.project;
   const patch = patchOf(track.patch);
   if (!patch) return;
   if (patch.kind === 'sampler') ensureSampleSet(patch.set);
   syncMixer();
-  const midi = 12 * (track.octave + 1) + p.root + degToSemis(scaleSteps(p.scale), deg) + alt;
   return playNote(audio.ctx, audio.mixer.strip(track.id).gain, patch, midi, audio.ctx.currentTime + 0.005, dur, 0.8);
 }
 
-export function previewChord(deg, type = 'triad', dur = 0.9) {
+export function previewChord(deg, type = 'triad', dur = 0.9, step = null) {
   if (!audio.ctx) return;
   const p = store.project;
   const c = p.chords;
@@ -35,9 +51,10 @@ export function previewChord(deg, type = 'triad', dur = 0.9) {
   if (!patch) return;
   if (patch.kind === 'sampler') ensureSampleSet(patch.set);
   syncMixer();
-  const base = 12 * (c.octave + 1) + p.root;
+  const k = previewKey(step);
+  const base = 12 * (c.octave + 1) + k.root;
   const t = audio.ctx.currentTime + 0.005;
-  chordSemis(scaleSteps(harmonyScaleId(p.scale)), deg, type).forEach((s, i) =>
+  chordSemis(scaleSteps(harmonyScaleId(k.scale)), deg, type).forEach((s, i) =>
     playNote(audio.ctx, audio.mixer.strip('chords').gain, patch, base + s, t + i * 0.012, dur, 0.65));
 }
 
@@ -48,6 +65,7 @@ export function previewMidi(patchId, midi, dur = 0.5, stripId = 'preview') {
   if (patch.kind === 'sampler') ensureSampleSet(patch.set);
   const s = audio.mixer.strip(stripId);
   s.gain.gain.value = 0.9;
+  s.filter.frequency.value = 20000;
   return playNote(audio.ctx, s.gain, patch, midi, audio.ctx.currentTime + 0.005, dur, 0.8);
 }
 
@@ -78,7 +96,12 @@ export function h(tag, attrs = {}, ...children) {
     if (v == null || v === false) continue;
     if (k.startsWith('on')) e.addEventListener(k.slice(2), v);
     else if (k === 'class') e.className = v;
-    else if (k === 'style' && typeof v === 'object') Object.assign(e.style, v);
+    else if (k === 'style' && typeof v === 'object') {
+      for (const [prop, val] of Object.entries(v)) {
+        if (prop.startsWith('--')) e.style.setProperty(prop, val); // custom properties need setProperty
+        else e.style[prop] = val;
+      }
+    }
     else if (k in e && k !== 'list') e[k] = v;
     else e.setAttribute(k, v === true ? '' : v);
   }
@@ -95,4 +118,5 @@ export function download(blob, name) {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
 }
 
+export { STEPS_PER_BAR };
 export async function ensureAudio() { return initAudio(); }
