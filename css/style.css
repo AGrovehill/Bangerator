@@ -499,6 +499,11 @@ aside.guide[hidden] { display: none; }
 .focus-note .lane-body { display: flex; align-items: center; gap: 10px; padding: 6px 12px; position: sticky; left: var(--head-w); }
 .focus-note .hint { margin: 0; }
 
+/* ---------- Velocity lane ---------- */
+.vel-head .head-row .btn { font-size: 11px; padding: 2px 6px; }
+.vel-cv { display: block; cursor: ns-resize; touch-action: none; }
+.vel-lane .lane-body { border-top: 1px dashed var(--line); }
+
 /* ---------- Misc ---------- */
 .toast {
   position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%) translateY(20px); opacity: 0;

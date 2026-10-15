@@ -6,10 +6,14 @@
 // Several notes can be selected (Ctrl+drag a box, Ctrl+click) and then moved, resized, copied, pasted,
 // transposed with the arrow keys or deleted together. Alt+wheel changes velocity.
 
-import { scaleSteps, degToSemis, semisToNearestDeg, intervalLabel, spellMidi, chordPitchClasses, chordFunction, harmonyScaleId, mod } from '../theory.js';
+import { scaleSteps, degToSemis, semisToNearestDeg, intervalLabel, spellMidi, chordPitchClasses, CHORD_TYPES, mod } from '../theory.js';
 import { STEPS_PER_BAR, sections, sectionRange, keyAt, inScale } from '../state.js';
+import { isAccent, ACCENT, NORMAL } from './vellane.js';
 
-const FN_RGB = { home: '81,207,102', away: '77,171,247', tension: '255,146,43' };
+// Chord notes ("ghosts") are teal, whatever the chord; the strength shows the role: root strongest, then 3rd, 5th, others.
+const TONE_RGB = '72,220,190';
+const TONE_ALPHA = { R: 0.34, 3: 0.22, 5: 0.16 };
+const IDX_LABEL = { 0: 'R', 1: '2', 2: '3', 3: '4', 4: '5', 6: '7', 7: 'R', 8: '9' }; // chord-type step -> role
 const BLACK = [1, 3, 6, 8, 10];
 export const KEYS_W = 84;
 const MAX_CANVAS = 32000; // browsers refuse canvases wider than ~32k pixels
@@ -112,18 +116,26 @@ export class ScaleRoll {
 
     // chord-tone tint per chord slot
     const c = p.chords;
+    const toneTags = []; // R / 3 / 5 labels, drawn on top of the grid
     for (let s = 0; s * c.slotSteps < L; s++) {
       const slot = c.slots[s];
       if (!slot) continue;
       const k = keyAt(p, s * c.slotSteps);
       const pcs = chordPitchClasses(k.root, k.scale, slot.deg, slot.type);
-      const rgb = FN_RGB[chordFunction(slot.deg, scaleSteps(harmonyScaleId(k.scale)))];
+      const roles = (CHORD_TYPES[slot.type]?.idx || [0, 2, 4]).map(i => IDX_LABEL[i] || '?');
       const x0 = s * c.slotSteps * cw, x1 = Math.min(L, (s + 1) * c.slotSteps) * cw;
       for (let r = 0; r < this.rows; r++) {
-        const pc = this.rowPitchClass(r, k);
-        if (!pcs.includes(pc)) continue;
-        g.fillStyle = `rgba(${rgb},${pc === pcs[0] ? 0.2 : 0.11})`;
+        const i = pcs.indexOf(this.rowPitchClass(r, k));
+        if (i < 0) continue;
+        const role = roles[i];
+        g.fillStyle = `rgba(${TONE_RGB},${TONE_ALPHA[role] ?? 0.11})`;
         g.fillRect(x0, r * rh, x1 - x0, rh);
+        if (role === 'R') { // edges make the root row pop
+          g.fillStyle = `rgba(${TONE_RGB},0.7)`;
+          g.fillRect(x0, r * rh, x1 - x0, 1);
+          g.fillRect(x0, r * rh + rh - 1, x1 - x0, 1);
+        }
+        toneTags.push({ x: x0, y: r * rh, role, w: x1 - x0 });
       }
     }
 
@@ -141,6 +153,20 @@ export class ScaleRoll {
       const strong = r > 0 && (this.piano ? mod(v, 12) === 0 : mod(v, n0) === 0);
       g.strokeStyle = strong ? '#4a5066' : '#262a36';
       g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke();
+    }
+
+    // the chord-note tags at the start of each chord
+    if (rh >= 12) {
+      g.font = '800 9px system-ui, sans-serif';
+      g.textBaseline = 'middle';
+      for (const t of toneTags) {
+        if (t.w < 22) continue;
+        const tw = t.role === 'R' ? 13 : 11;
+        g.fillStyle = `rgba(${TONE_RGB},${t.role === 'R' ? 0.95 : 0.7})`;
+        roundRect(g, t.x + 2, t.y + 2, tw, rh - 4, 3); g.fill();
+        g.fillStyle = '#0b2b25';
+        g.fillText(t.role, t.x + 2 + (tw - g.measureText(t.role).width) / 2, t.y + rh / 2 + 0.5);
+      }
     }
 
     // section boundaries, with the degree numbers of that section at its left edge
@@ -179,6 +205,10 @@ export class ScaleRoll {
       if (out) { // not in the scale: flag it
         g.save(); g.strokeStyle = '#ff6b6b'; g.lineWidth = 2; g.setLineDash([4, 3]);
         roundRect(g, x + 1, y + 1, nw - 2, nh - 2, 4); g.stroke(); g.restore();
+      }
+      if (isAccent(note)) { // accent: a bright stripe along the top
+        g.fillStyle = 'rgba(255,255,255,0.9)';
+        g.fillRect(x + 2, y + 1, Math.max(2, nw - 4), 2);
       }
       if (this.sel.has(note)) {
         g.save(); g.strokeStyle = '#fff'; g.lineWidth = 2;
@@ -422,6 +452,13 @@ export class ScaleRoll {
         return;
       }
       cv.setPointerCapture(e.pointerId);
+      if (e.altKey && h) { // Alt+click: accent on/off (for the whole selection if the note is selected)
+        const to = isAccent(h.note) ? NORMAL : ACCENT;
+        for (const n of this.sel.has(h.note) ? [...this.sel] : [h.note]) n.vel = to;
+        this.preview(h.note);
+        this.opts.onCommit();
+        return;
+      }
       const ctrl = e.ctrlKey || e.metaKey;
       if (ctrl && h) { // toggle one note
         if (this.sel.has(h.note)) this.sel.delete(h.note); else this.sel.add(h.note);

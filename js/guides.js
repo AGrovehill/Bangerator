@@ -310,7 +310,7 @@ const techno = {
     { id: 'chords', title: 'One chord: the stab', where: { tab: 'compose', role: 'stab', scroll: 'chords', track: 'stab' },
       text: [
         'Techno harmony is minimal: usually **one minor chord** for the whole track. What changes is its rhythm and its filter.',
-        '• The chord lane holds **i** (the home chord) as a silent guide, so the rolls show you which rows are chord notes (tinted).',
+        '• The chord lane holds **i** (the home chord) as a silent guide, so the rolls show you which rows are chord notes (teal, with the root tagged R).',
         '• In the Stab track, play the chord’s three notes (**1, 3, 5**) together as very short hits on off-beat 16ths: try steps 4, 7 and 12 of the bar.',
         '• In bar 4, move the last hit to the chord one step below (**VII**) for a tiny lift before the loop restarts.',
         'This is the **dub techno stab**. Delay and reverb do half the work, and that comes in the mix step.',
@@ -473,7 +473,7 @@ const trance = {
     { id: 'bass', title: 'The off-beat bass', where: { tab: 'compose', role: 'bass', scroll: 'tracks', track: 'bass' },
       text: [
         'The trance bass plays **between the kicks**: the chord’s root on every off-beat 8th. Kick–bass–kick–bass gives the genre its gallop, and the two never overlap.',
-        '• In the Bass track put the **root of the current chord** on step 3 of every beat (the tinted rows are chord notes; the root is the strongest tint).',
+        '• In the Bass track put the **root of the current chord** on step 3 of every beat (the teal rows are chord notes; the root is the one tagged **R**).',
         '• It changes note when the chord changes, every 2 bars.',
         '• Variation: a “rolling” bass plays the three 16ths after each kick instead.',
         'Sidebar → **Bassline ideas → Off-beat** writes exactly this from your chords.',
@@ -484,7 +484,7 @@ const trance = {
       text: [
         'A short, bright **pluck playing the chord notes as 16ths** fills the space and carries the harmony when the pad is filtered down.',
         '• Run up and down the chord: root, 3rd, 5th, octave, 5th, 3rd… and restart when the chord changes.',
-        '• Only use the tinted rows (chord notes) and it cannot sound wrong.',
+        '• Only use the teal rows (chord notes) and it cannot sound wrong.',
         '• Delay on a pluck makes one line sound like three.',
       ],
       do: (p, c) => abstractNotes(p, c, 'pluck', 'pluck', arp(c.view('pluck'), { shape: [0, 1, 2, 3, 2, 1, 2, 3], vels: [0.9, 0.6, 0.7, 0.6] })),
@@ -494,7 +494,7 @@ const trance = {
         'The melody is the heart of a trance track. What works:',
         '• **A short motif, repeated over each chord** and shifted to fit it. Listeners remember rhythm first.',
         '• A **dotted rhythm** (notes 3 steps long: 3 + 3 + 2) pushes against the straight kick.',
-        '• **Land on chord notes** (tinted rows) on the strong beats; use the notes in between to travel.',
+        '• **Land on chord notes** (teal rows) on the strong beats; use the notes in between to travel.',
         '• Let the last bar **rise**, so the loop wants to start again.',
         'The sound is a **supersaw**: 7 detuned saws (Sound Design → Unison). The “Next note?” card suggests where to go from any note.',
       ],
@@ -639,7 +639,7 @@ const house = {
     { id: 'bass', title: 'The bassline', where: { tab: 'compose', role: 'bass', scroll: 'tracks', track: 'bass' },
       text: [
         'A house bassline **bounces**: the chord’s root on beat 1, then notes that push ahead of the beat (syncopation), with an octave jump or the 5th for flavour.',
-        '• Start each bar with the **root** of that bar’s chord (strongest tint).',
+        '• Start each bar with the **root** of that bar’s chord (the teal row tagged **R**).',
         '• Add 3–4 more short notes on off-16ths. Leave gaps: rests are part of the groove.',
         '• One jump up an octave per bar makes it funky.',
         'Sidebar → **Bassline ideas → Syncopated** or **Octave bounce** write house basslines from your chords.',
@@ -649,7 +649,7 @@ const house = {
     { id: 'keys', title: 'Piano stabs', where: { tab: 'compose', role: 'keys', scroll: 'tracks', track: 'keys' },
       text: [
         'The **house piano**: short chord stabs on a syncopated rhythm. The rhythm matters more than the notes.',
-        '• Play 3 notes of the chord together (tinted rows). Leaving out the root (the bass has it) and playing **3rd, 5th, 7th** sounds more sophisticated.',
+        '• Play 3 notes of the chord together (teal rows). Leaving out the root (the bass has it) and playing **3rd, 5th, 7th** sounds more sophisticated.',
         '• Rhythm to try: steps 1, 4, 7, 11 and 14 of each bar. Hits that fall just before a beat give the push.',
         '• Keep them short (2 steps).',
         'Ctrl+drag selects a bar of stabs; Ctrl+D repeats it, then move the copy to the next chord’s notes.',
@@ -660,7 +660,7 @@ const house = {
       text: [
         'A house hook is short, rhythmic and **repeats**: think of a vocal chop or an organ riff, not a long melody.',
         '• Write a 1-bar phrase that starts **off the beat**, then repeat its rhythm in each bar with the notes moved to fit the chord.',
-        '• Stay within about 5 notes. Chord notes (tinted) on the long notes.',
+        '• Stay within about 5 notes. Chord notes (teal rows) on the long notes.',
         '• End bar 4 differently so the 4-bar phrase has a shape.',
         'The “Next note?” card suggests where to go from any note.',
       ],
@@ -802,7 +802,7 @@ const dnb = {
     { id: 'bass', title: 'The sub', where: { tab: 'compose', role: 'sub', scroll: 'tracks', track: 'sub' },
       text: [
         'DnB bass has two layers. First the **sub**: a pure sine at **octave 1** that you feel more than hear.',
-        '• Long notes on the **root of each chord** (strongest tint).',
+        '• Long notes on the **root of each chord** (the teal row tagged **R**).',
         '• Start a note with each kick: on step 1, and again on step 11.',
         '• Leave a short gap before each new note so it re-triggers cleanly.',
         'Keep the sub simple and exactly on the roots. All the character comes from the next layer.',
@@ -844,7 +844,7 @@ const dnb = {
         '• Play the chord notes one at a time as 8ths: root, 5th, 3rd above, 5th…',
         '• Leave the last couple of 8ths of every second bar empty: the gap lets the drums speak.',
         '• Reverb and delay turn this into a wash behind the drums.',
-        'For a lead melody instead, write long notes on chord notes (tinted rows): at this tempo, a note per beat already feels busy.',
+        'For a lead melody instead, write long notes on chord notes (teal rows): at this tempo, a note per beat already feels busy.',
       ],
       do: (p, c) => abstractNotes(p, c, 'keys', 'keys', arp(c.view('keys'), { rate: 2, len: 2, shape: [0, 2, 4, 2, 3, 2, 4, 2], vels: [0.9, 0.65, 0.8, 0.65], skip: s => s % 32 >= 28 })),
       check: (p, c) => hasNotes(c, 'keys', 'keys') },
@@ -1202,7 +1202,7 @@ const ballad = {
     { id: 'piano', title: 'Piano: broken chords', where: { tab: 'compose', role: 'verse', scroll: 'tracks', track: 'piano' },
       text: [
         'The piano carries the piece. Instead of block chords, play them **broken**: one note at a time, in 8ths, rising and falling.',
-        '• For each bar: root, 3rd, 5th, the root an octave up, the 3rd above that, then back down. Only use the tinted rows (chord notes).',
+        '• For each bar: root, 3rd, 5th, the root an octave up, the 3rd above that, then back down. Only use the teal rows (chord notes).',
         '• Play it quietly and evenly. The left hand (low root) can be a little louder than the rest.',
         '• Write it in Intro, Verse, Chorus and Outro. In the Outro, let the last chord ring as one long chord.',
         'Ctrl+drag selects a bar; Ctrl+C and Ctrl+V copy it into the next bar, then drag the notes onto the new chord’s rows.',
@@ -1220,7 +1220,7 @@ const ballad = {
     { id: 'bass', title: 'Bass', where: { tab: 'compose', role: 'verse', scroll: 'tracks', track: 'bass' },
       text: [
         'A gentle bass makes the piano sound bigger and the chords clearer.',
-        '• **Verse**: one long note per bar on the chord’s **root** (strongest tint).',
+        '• **Verse**: one long note per bar on the chord’s **root** (the teal row tagged **R**).',
         '• **Chorus**: root on beat 1, the chord’s **5th** on beat 3. A little more motion for the bigger section.',
         '• **Intro**: nothing. Let the piano be alone first.',
         'Sidebar → Bassline ideas → **Long roots** and **Root and fifth** write exactly these.',
@@ -1234,7 +1234,7 @@ const ballad = {
     { id: 'melody', title: 'The melody', where: { tab: 'compose', role: 'verse', scroll: 'tracks', track: 'melody' },
       text: [
         'A slow melody should feel **sung**: long notes, few of them, mostly moving by step.',
-        '• **Verse**: stay low (around **3–5**). Short phrases of 2 bars, each ending on a long note. Long notes on chord tones (tinted rows).',
+        '• **Verse**: stay low (around **3–5**). Short phrases of 2 bars, each ending on a long note. Long notes on chord tones (teal rows).',
         '• **Chorus**: **higher** (around **1 an octave up**). The contrast in register is what makes a chorus feel bigger, more than volume.',
         '• End the verse on **5** over the V chord (unresolved: it wants to go on), and the chorus on **6** over vi (sad, but complete).',
         '• Leave space between phrases. Silence is part of a sad melody.',

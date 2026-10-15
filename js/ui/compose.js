@@ -7,6 +7,7 @@ import { romanNumeral, chordName, chordFunction, scaleSteps, harmonyScaleId, CHO
 import { audio, playBuffer, decodeUserSample } from '../audio.js';
 import { ScaleRoll, KEYS_W, getActiveRoll } from './scaleroll.js';
 import { AutoLane, addLane, targetSelect } from './autolane.js';
+import { VelLane, accentBeats, evenOut, humanize } from './vellane.js';
 import { GENRES } from '../guides.js';
 import { ui, h, previewDeg, previewTrackMidi, previewChord, toast, patchOf, popupMenu } from './common.js';
 import { transport, syncMixer } from '../sequencer.js';
@@ -40,8 +41,8 @@ export function renderCompose() {
     lanes.append(sectionTitle('Chords', 'The harmony. Pick chords from the sidebar, or click a slot and then click a chord.'));
     lanes.append(chordLane(p, L, cw));
   }
-  if (show.tracks.length) lanes.append(sectionTitle('Melody & Bass', 'Scale tracks: rows are scale degrees (1 is home). Piano tracks: rows are the 12 notes. Tinted rows are notes of the chord playing above them.'));
-  for (const t of show.tracks) lanes.append(trackLane(t, L));
+  if (show.tracks.length) lanes.append(sectionTitle('Melody & Bass', 'Scale tracks: rows are scale degrees (1 is home). Piano tracks: rows are the 12 notes. Teal rows are the notes of the chord playing above: R = its root (strongest), 3 = third, 5 = fifth, 7 = seventh. Long notes on teal rows always fit.'));
+  for (const t of show.tracks) lanes.append(...[].concat(trackLane(t, L)));
   if (show.rows.length) lanes.append(sectionTitle('Drums & Samples', 'Click steps to toggle, or drag across to paint. Shift or right-click for a loud accent. ⋯ on a row fills it with a rhythm or repeats it. Drop audio files here to add sample rows.', lane => {
     drumSectionDrop()(lane);
     lane.querySelector('.lane-body').append(h('div', { class: 'drum-tools' },
@@ -376,6 +377,7 @@ function trackLane(t, L) {
     h('div', { class: 'head-row' },
       h('button', { class: 'btn', title: 'Remove all notes', onclick: () => { if (t.notes.length && confirm(`Clear all notes in “${t.name}”?`)) { t.notes = []; commit('notes'); } } }, 'Clear'),
       h('button', { class: 'btn', title: 'Copy the first bar(s) across the loop', onclick: () => fillFromStart(t) }, 'Repeat'),
+      h('button', { class: 'btn' + (ui.velLanes.has(t.id) ? ' on' : ''), title: 'Velocity lane: how hard each note is played. Drag bars up and down, or across to paint', onclick: () => { if (ui.velLanes.has(t.id)) ui.velLanes.delete(t.id); else ui.velLanes.add(t.id); renderCompose(); } }, 'Vel'),
       h('button', { class: 'btn', title: 'Delete this track', onclick: () => {
         if (!confirm(`Delete track “${t.name}”? Its notes go from every pattern.`)) return;
         deleteTrack(t);
@@ -383,7 +385,22 @@ function trackLane(t, L) {
   const head = h('div', { class: 'lane-head' }, controls, roll.keys);
   head.addEventListener('pointerdown', () => selectTrack(t.id));
   lane.append(head, h('div', { class: 'lane-body' }, roll.canvas));
-  return lane;
+  if (!ui.velLanes.has(t.id)) return lane;
+  // velocity lane under the roll
+  const vl = new VelLane(t, { steps: () => L, px: () => ui.cellW, getSelection: () => roll.sel, onChange: () => roll.render(), onCommit: () => commit('notes') });
+  rolls.push(vl);
+  const inPattern = () => t.notes.filter(n => n.step < L);
+  const tool = (label, title, fn) => h('button', { class: 'btn', title, onclick: () => { fn(roll.sel.size ? [...roll.sel] : inPattern()); commit('notes'); } }, label);
+  const velRow = h('div', { class: 'lane vel-lane' + (ui.selectedTrackId === t.id ? ' selected' : ''), 'data-track': t.id },
+    h('div', { class: 'lane-head vel-head' },
+      h('div', { class: 'head-controls' },
+        h('div', { class: 'head-row' }, h('b', {}, 'Velocity'), h('span', { class: 'hint', style: { margin: 0 } }, 'drag bars · right-click = accent')),
+        h('div', { class: 'head-row' },
+          tool('Accent beats', 'Notes on the beat loud, the ones between softer: the quickest way to make a part groove', accentBeats),
+          tool('Even', 'Every note the same velocity', evenOut),
+          tool('Humanize', 'Small random differences, like a player', humanize)))),
+    h('div', { class: 'lane-body' }, vl.canvas));
+  return [lane, velRow];
 }
 
 function switchMode(t, mode) {

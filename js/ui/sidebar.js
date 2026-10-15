@@ -109,11 +109,11 @@ function renderNextNote(p) {
           previewTrackMidi(t, midi);
           commit('notes');
         } }, '+'));
-      el.style.setProperty('--fn', idea.isChordTone ? 'var(--fn-home)' : 'var(--line-strong)');
+      el.style.setProperty('--fn', idea.isChordTone ? 'rgb(72,220,190)' : 'var(--line-strong)');
       el.addEventListener('click', () => previewTrackMidi(t, midi));
       return el;
     })),
-    h('p', { class: 'hint' }, 'Green = a note of the chord playing there. Click a track to get ideas for it.'));
+    h('p', { class: 'hint' }, 'Teal = a note of the chord playing there (the teal rows in the roll). Click a track to get ideas for it.'));
 }
 
 // ---------- Bassline ideas ----------

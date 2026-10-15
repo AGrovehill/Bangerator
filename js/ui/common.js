@@ -18,6 +18,7 @@ export const ui = {
   ctlChannel: null,   // what a MIDI controller's keys and knobs drive (track id, 'chords' or 'drums')
   focusLanes: (() => { try { return localStorage.getItem('bangerator.focusLanes') !== '0'; } catch { return true; } })(), // hide lanes a pattern doesn't use
   showAllLanes: false, // 'Show everything' for the current pattern
+  velLanes: new Set(), // track ids whose velocity lane is open
   bassTarget: null,   // track id that Bassline ideas write to ('' = a new track, null = guess the bass track)
 };
 
