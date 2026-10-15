@@ -36,6 +36,7 @@ function initTopbar() {
   $('in-bars').addEventListener('change', e => setBars(Number(e.target.value)));
   $('in-swing').addEventListener('input', e => { store.project.swing = Number(e.target.value); });
   $('in-swing').addEventListener('change', () => commit('tempo'));
+  $('in-swinggrid').addEventListener('change', e => { store.project.swingGrid = Number(e.target.value); commit('tempo'); });
   $('in-root').addEventListener('change', e => changeKey(Number(e.target.value), selectedKey().scale, ui.selectedSection));
   $('in-scale').addEventListener('change', e => changeKey(selectedKey().root, e.target.value, ui.selectedSection));
   $('in-pattern').addEventListener('change', e => openPattern(e.target.value));
@@ -109,6 +110,7 @@ function syncTopbar() {
   $('in-bpm').value = p.bpm;
   $('in-bars').value = p.bars;
   $('in-swing').value = p.swing;
+  $('in-swinggrid').value = String(p.swingGrid || 16);
   const k = selectedKey();
   $('in-root').value = k.root;
   $('in-scale').value = k.scale;
@@ -273,17 +275,35 @@ function exportWavDialog(safeName) {
     <p class="hint">Renders to a .wav file right in your browser.</p>
     <div class="ex-what">${whatToExport()}</div>
     <div class="actions"><button class="btn" data-close>Cancel</button><button class="btn on" id="wav-go">Render .wav</button></div>`,
-  (box, close) => box.querySelector('#wav-go').addEventListener('click', async e => {
-    e.target.disabled = true; e.target.textContent = 'Rendering…';
+  (box, close) => box.querySelector('#wav-go').addEventListener('click', async () => {
     const song = box.querySelector('input[name=what]:checked').value === 'song';
+    const loops = clamp(Number(box.querySelector('#ex-loops').value) || 1, 1, 64);
+    // switch the dialog to a progress view
+    const cancel = { cancelled: false };
+    box.innerHTML = `<h2>Rendering ${song ? 'the song' : 'the pattern'}…</h2>
+      <div class="progress"><div class="progress-fill" id="wav-bar"></div></div>
+      <div class="progress-info"><span id="wav-phase">Starting…</span><span id="wav-pct">0%</span></div>
+      <p class="hint" id="wav-time"></p>
+      <div class="actions"><button class="btn" id="wav-cancel">Cancel</button></div>`;
+    document.getElementById('modal').onclick = null; // don't close by clicking outside while it renders
+    const started = performance.now();
+    const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+    box.querySelector('#wav-cancel').addEventListener('click', () => { cancel.cancelled = true; box.querySelector('#wav-phase').textContent = 'Stopping…'; cancel.onCancel?.(); });
+    const onProgress = (f, phase) => {
+      box.querySelector('#wav-bar').style.width = `${(f * 100).toFixed(1)}%`;
+      box.querySelector('#wav-pct').textContent = `${Math.floor(f * 100)}%`;
+      box.querySelector('#wav-phase').textContent = phase;
+      const el = (performance.now() - started) / 1000;
+      box.querySelector('#wav-time').textContent = f > 0.2 && f < 1 ? `${fmt(el)} elapsed · about ${fmt(el / f - el)} left` : `${fmt(el)} elapsed`;
+    };
     try {
       await initAudio();
-      const blob = await renderWav({ song, loops: clamp(Number(box.querySelector('#ex-loops').value) || 1, 1, 64) });
+      const blob = await renderWav({ song, loops, onProgress, cancel });
       download(blob, `${safeName}${song ? '' : '-pattern'}.wav`);
-      toast('Audio exported.');
+      toast(`Audio exported (${fmt((performance.now() - started) / 1000)} to render).`);
     } catch (err) {
-      console.error(err);
-      toast('Rendering failed: ' + err.message);
+      if (err.cancelled) toast('Rendering cancelled.');
+      else { console.error(err); toast('Rendering failed: ' + err.message); }
     }
     close();
   }));
@@ -367,7 +387,7 @@ function onChange(what) {
   if (what === 'notes') { redrawRolls(); syncTopbar(); renderAdvice(); return; }
   if (what === 'drums' || what === 'tempo') { syncTopbar(); syncDrumCells(); renderAdvice(); if (activeTab === 'arrange') renderArrange(); return; }
   if (what === 'song') { syncTopbar(); if (activeTab === 'arrange') renderArrange(); return; }
-  if (what === 'pattern') { ui.selectedSlot = null; ui.selectedSection = 0; ui.showAllLanes = false; }
+  if (what === 'pattern') { ui.selectedSlot = null; ui.selectedSection = 0; ui.showAllLanes = false; ui.expandedLanes.clear(); }
   syncMixer();
   syncTopbar();
   if (activeTab === 'compose') renderCompose();

@@ -27,9 +27,13 @@ Live at **https://bangerator.darkkis.fi**. It runs entirely in your browser; not
   - The Coach points out clashes and common improvements, with one-click fixes.
   - "Next note?" suggests where a melody could go.
   - Bassline ideas are built from your chords.
-- **Genre guides**: techno, trance, house, drum & bass, psytrance, midtempo, hardcore and a sad instrumental. Each walks through every phase of making a track (drums, bass, chords, hook, mix, build-ups, arrangement, automation). Every step explains the genre's common methods, and has a "Do it for me" that writes a typical version. Following one gives a full-length song.
+- **Guides** for learning to produce and write. There are 15, and following any of them gives a finished, arranged piece:
+  - Electronic: techno, trance, house, drum & bass, psytrance, midtempo, hardcore, ambient.
+  - Songs & bands: 12-bar blues, basic rock, pop song, funk.
+  - Moods: sad song in minor, sad bittersweet instrumental, lo-fi hip hop.
+  - Each step explains the method and the theory behind it, and has a "Do it for me" that writes a typical version.
 - **Undo history**: the ▾ next to undo lists your recent changes, so you can go back several steps at once.
-- **Export**: MIDI and WAV (a pattern or the whole song). Live MIDI output, and Novation Launchkey Mini (MK3/MK4) support for pads, knobs and transport, in Chrome or Edge.
+- **Export**: MIDI and WAV (a pattern or the whole song, with a progress bar). Live MIDI output, and Novation Launchkey Mini (MK3/MK4) support for pads, knobs and transport, in Chrome or Edge.
 - **Learn**: a beginner music theory guide.
 
 ## Saving

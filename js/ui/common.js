@@ -19,6 +19,7 @@ export const ui = {
   focusLanes: (() => { try { return localStorage.getItem('bangerator.focusLanes') !== '0'; } catch { return true; } })(), // hide lanes a pattern doesn't use
   showAllLanes: false, // 'Show everything' for the current pattern
   velLanes: new Set(), // track ids whose velocity lane is open
+  expandedLanes: new Set(), // folded lanes opened by hand in the current pattern ('t:<id>', 'd:<id>', 'drums', 'chords')
   bassTarget: null,   // track id that Bassline ideas write to ('' = a new track, null = guess the bass track)
 };
 

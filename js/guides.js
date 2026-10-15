@@ -1,5 +1,5 @@
 // Genre guides: a project template plus a step-by-step tutorial for techno, trance, house, drum & bass, psytrance,
-// midtempo, hardcore, and a sad instrumental piece in song form.
+// midtempo, hardcore, and a sad instrumental piece in song form. More styles (blues, rock, pop, lo-fi...) are in guides2.js.
 //
 // Every guide works the way these genres are usually built: one pattern per element (kick, hats, bass,
 // chords, lead...), layered on the playlist. The tutorial walks through the phases in order. Each step
@@ -12,12 +12,8 @@ import { blankProject, newTrack, TRACK_COLORS, PATTERN_COLORS, defaultFx, addPat
   STEPS_PER_BAR, songBars } from './state.js';
 import { DEFAULT_PATCH } from './audio.js';
 import { chordAt, bassLine, toTrackNotes } from './advisor.js';
-
-const synth = (name, over) => ({ name, kind: 'synth', patch: { ...DEFAULT_PATCH, ...over } });
-
-// ---------- Small builders ----------
-const hitsOf = str => [...str.replace(/[\s|]/g, '')].map(c => (c === 'X' ? 2 : c === 'x' ? 1 : 0));
-const fold = semis => { const r = ((semis % 12) + 12) % 12; return r > 7 ? r - 12 : r; };
+import { GUIDES2 } from './guides2.js';
+import { abstractNotes, arp, arrange, arrangeText, barsToNotes, buildUp, count, drumSweep, drums, finishStep, fold, fx, hasChords, hasDrums, hasNotes, hitsOf, jamLoop, lane, mixText, notes, sectionStarts, setChords, slotsInto, stabs, synth, totalBars } from './guidekit.js';
 
 function ctxOf(p) {
   const g = p.guide;
@@ -30,185 +26,6 @@ function ctxOf(p) {
     view: role => contentView(p, p.patterns.find(x => x.id === g.roles.pats[role])),
   };
 }
-
-// Write drum steps: lines = { kick: 'X...X...', ... }; strings repeat to fill the pattern.
-function drums(p, c, role, lines, clear = true) {
-  const pat = c.pat(role);
-  const L = pat.bars * STEPS_PER_BAR;
-  if (clear) pat.drumSteps = {};
-  for (const [kind, str] of Object.entries(lines)) {
-    const h = hitsOf(str);
-    pat.drumSteps[c.row(kind).id] = Array.from({ length: L }, (_, i) => h[i % h.length]);
-  }
-}
-
-// Write notes given as [step, len, degree, velocity?]
-function notes(c, role, trackRole, list) {
-  const pat = c.pat(role);
-  const L = pat.bars * STEPS_PER_BAR;
-  pat.notes[c.track(trackRole).id] = list.filter(n => n[0] < L).map(([step, len, deg, vel = 0.85]) => ({ step, len: Math.min(len, L - step), deg, vel }));
-}
-
-function abstractNotes(p, c, role, trackRole, abs) {
-  c.pat(role).notes[c.track(trackRole).id] = toTrackNotes(c.view(role), c.track(trackRole), abs);
-}
-
-// Chords into every pattern: sounding in `playRoles`, as a silent guide everywhere else.
-function setChords(p, c, degs, slotSteps, type, playRoles) {
-  const playing = new Set(playRoles.map(r => c.pat(r).id));
-  for (const pat of p.patterns) {
-    const n = Math.ceil(pat.bars * STEPS_PER_BAR / slotSteps);
-    pat.chordSlots = Array.from({ length: n }, (_, i) => ({ deg: degs[i % degs.length], type }));
-    pat.slotSteps = slotSteps;
-    pat.chordsGuide = !playing.has(pat.id);
-  }
-}
-
-// Notes that run through the chord tones. shape indexes [root, 3rd, 5th, root+8ve, 3rd+8ve]; it restarts on each chord.
-function arp(view, { rate = 1, shape = [0, 1, 2, 3, 2, 1], len = 1, vels = [0.9, 0.6, 0.7, 0.6], skip = () => false } = {}) {
-  const L = view.bars * STEPS_PER_BAR, out = [];
-  for (let s = 0; s < L; s += rate) {
-    const ch = chordAt(view, s);
-    if (!ch || skip(s)) continue;
-    const r = fold(ch.semis[0]);
-    const t = ch.semis.map(x => r + x - ch.semis[0]);
-    const tones = [t[0], t[1], t[2], t[0] + 12, t[1] + 12];
-    const i = Math.floor((s - ch.start) / rate);
-    out.push({ step: s, len, semis: tones[shape[i % shape.length]], vel: vels[i % vels.length] });
-  }
-  return out;
-}
-
-// Chord hits on a rhythm: hits = [[stepInBar, len, vel?], ...]; tones = which chord notes to play.
-function stabs(view, hits, tones = [0, 1, 2], lift = 0) {
-  const L = view.bars * STEPS_PER_BAR, out = [];
-  for (let bar = 0; bar < view.bars; bar++) {
-    for (const [s, len, vel = 0.8] of hits) {
-      const step = bar * STEPS_PER_BAR + s;
-      const ch = chordAt(view, step);
-      if (!ch || step >= L) continue;
-      const r = fold(ch.semis[0]);
-      for (const i of tones) {
-        if (ch.semis[i] == null) continue;
-        out.push({ step, len, semis: r + ch.semis[i] - ch.semis[0] + lift, vel });
-      }
-    }
-  }
-  return out;
-}
-
-// A snare roll that speeds up over `bars`, with a riser over the last `riserBars` and a gap before the drop.
-function buildUp(p, c, bars, riserBars) {
-  const q = Math.max(1, Math.floor(bars / 2)), e = Math.max(1, Math.floor(bars / 4));
-  let snare = 'x...x...x...x...'.repeat(q) + 'x.x.x.x.x.x.x.x.'.repeat(bars - q - e) + 'XxxxXxxxXxxxXxxx'.repeat(Math.max(0, e - 1)) + 'XxxxXxxxXxXxX...';
-  snare = snare.slice(-bars * 16);
-  const riser = '.'.repeat((bars - riserBars) * 16) + 'X' + '.'.repeat(riserBars * 16 - 1);
-  const clap = '.'.repeat((bars - 1) * 16) + 'x.x.x.x.x.x.x...';
-  drums(p, c, 'build', { snare, riser, clap });
-  p.drumParams.riser.length = Math.round(riserBars * 4 * 60 / p.bpm * 100) / 100; // exactly `riserBars` long at this tempo
-}
-
-const fx = (obj, over) => { obj.fx = defaultFx({ ...obj.fx, ...over }); };
-const count = arr => (arr || []).filter(Boolean).length;
-const hasDrums = (c, role, kinds) => kinds.some(k => count(c.pat(role)?.drumSteps[c.row(k).id]) > 0);
-const hasNotes = (c, role, trackRole) => (c.pat(role)?.notes[c.track(trackRole)?.id] || []).length > 0;
-const hasChords = (c, role) => count(c.pat(role)?.chordSlots) > 0;
-
-// ---------- Arrangement ----------
-// sections: [{ name, bars, layers: ['kick', 'hats@16', 'bass@0-16', 'lead@-8'], build: bars?, impact: true?, key?: { root, scale } }]
-// '@16' = from bar 16 of the section, '@0-16' = bars 0 to 16, '@-8' = the last 8 bars.
-export function totalBars(G) { return G.sections.reduce((a, s) => a + s.bars, 0); }
-
-function sectionStarts(G) {
-  const out = {};
-  let bar = 0;
-  for (const s of G.sections) { out[s.name] = bar; bar += s.bars; }
-  out.END = bar;
-  return out;
-}
-
-function arrange(p, c, sections = c.G.sections) {
-  const G = c.G;
-  const laneOf = role => G.lanes.findIndex(l => l.roles.includes(role));
-  p.song.lanes = G.lanes.map(l => ({ id: uid('l'), name: l.name, mute: false }));
-  const clips = [], markers = [];
-  let bar = 0;
-  for (const sec of sections) {
-    markers.push({ bar, name: sec.name });
-    for (const spec of sec.layers) {
-      const m = /^(\w+)(?:@(-?\d+)(?:-(\d+))?)?$/.exec(spec);
-      const role = m[1];
-      let from = 0, to = sec.bars;
-      if (m[2] != null) {
-        const a = Number(m[2]);
-        if (a < 0) from = sec.bars + a; else { from = a; if (m[3] != null) to = Number(m[3]); }
-      }
-      clips.push(newClip(c.pat(role).id, laneOf(role), bar + from, to - from, sec.key ? { ...sec.key } : null));
-    }
-    if (sec.build) clips.push(newClip(c.pat('build').id, laneOf('build'), bar + sec.bars - sec.build, sec.build));
-    if (sec.impact) clips.push(newClip(c.pat('impact').id, laneOf('impact'), bar, c.pat('impact').bars));
-    bar += sec.bars;
-  }
-  p.song.clips = clips;
-  p.song.markers = markers;
-  p.song.loop = null;
-}
-
-// What you hear while writing: every element stacked as an 8-bar loop, so new parts are heard in context.
-// Song-form guides (verse, chorus...) give a short draft of the song instead.
-function jamLoop(p, c) {
-  const G = c.G;
-  if (G.workSections) { arrange(p, c, G.workSections); return; }
-  p.song.lanes = G.lanes.map(l => ({ id: uid('l'), name: l.name, mute: false }));
-  p.song.clips = [];
-  G.lanes.forEach((l, i) => {
-    for (const role of l.roles) if (!['build', 'impact'].includes(role)) p.song.clips.push(newClip(c.pat(role).id, i, 0, 8));
-  });
-  p.song.markers = [{ bar: 0, name: 'Work loop' }];
-  p.song.loop = { start: 0, end: 8 };
-}
-
-// Song automation lane from points given in bars: [[bar, value], ...]
-function lane(p, target, pts) {
-  p.song.auto = p.song.auto.filter(l => l.target !== target);
-  p.song.auto.push({ id: uid('a'), target, points: pts.map(([bar, value]) => ({ step: Math.round(bar * STEPS_PER_BAR), value })).sort((a, b) => a.step - b.step) });
-}
-
-// "Filter the drums out": a quick high-pass sweep over the 4 bars before `bar`, released on the downbeat.
-const drumSweep = bar => [[bar - 4, 0], [bar - 0.25, 0.55], [bar, 0]];
-
-// ---------- Shared steps ----------
-const mixText = extra => [
-  'Mixing a dance track is mostly about **the low end** and **space**:',
-  '• **Sidechain (Pump)**: duck everything that fights the kick, on every beat. The kick stays punchy and the whole track “breathes”.',
-  '• **High-pass** everything that isn’t kick or bass (Mix & FX → High-pass, 120–300 Hz). Two things below 100 Hz at once turns to mud.',
-  '• **Levels first**: kick loudest, bass just under it, everything else well below. Turn things down, not up.',
-  '• **Reverb and delay** on the melodic parts only. Keep kick and bass dry.',
-  ...extra,
-  'The **Coach** card in the sidebar points out what still clashes.',
-];
-
-const finishStep = {
-  id: 'finish', title: 'Listen, polish, export', manual: true,
-  where: { tab: 'arrange' },
-  text: [
-    'Switch to **Song** and play the whole thing from the top. Listen away from the screen if you can.',
-    '• Anything that gets boring? Drop an element out for 4–8 bars (shorten or split a clip), or mute a lane for a section.',
-    '• Does each drop hit harder than what came before? If not, strip the section before it down further. Contrast is what makes a drop.',
-    '• Make it yours: open any pattern and change notes. The Coach, Next note and Bassline cards work on whichever pattern is open.',
-    '• Ctrl+S keeps a history point. **File → Export audio** renders the whole song to a .wav.',
-    'Then play it to someone. That is the real last step.',
-  ],
-  check: () => false,
-};
-
-const arrangeText = (G, why) => [
-  `Now the song. Dance music is built in **blocks of 8, 16 and 32 bars**, and elements enter and leave at those boundaries, so DJs can mix it and listeners feel the changes coming.`,
-  ...why,
-  `The plan for this track (${totalBars(G)} bars):`,
-  ...G.sections.map(s => `• **${s.name}** (${s.bars} bars): ${s.note}`),
-  'In **Arrange**: pick a pattern on the left and click a lane to place it, drag the right edge to make it last, Ctrl+drag to copy. Click the Sections row to label parts.',
-];
 
 // ---------- TECHNO ----------
 // The 303 recipe: one saw, mono with slide, a resonant 24 dB filter with a short envelope, accents
@@ -230,8 +47,8 @@ const techno = {
     { name: 'Kick', roles: ['kick'] }, { name: 'Hats & clap', roles: ['hats'] }, { name: 'Percussion', roles: ['perc'] }, { name: 'Ride', roles: ['ride'] },
     { name: 'Bass', roles: ['bass'] }, { name: 'Stab', roles: ['stab'] }, { name: 'Acid', roles: ['acid'] }, { name: 'FX', roles: ['build', 'impact'] },
   ],
-  patterns: [['kick', 'Kick', 4], ['hats', 'Hats & clap', 4], ['perc', 'Percussion', 4], ['ride', 'Ride', 4], ['bass', 'Rumble bass', 4],
-    ['stab', 'Stab', 4], ['acid', 'Acid line', 4], ['build', 'Build-up', 8], ['impact', 'Impact', 4]],
+  patterns: [['kick', 'Kick', 1], ['hats', 'Hats & clap', 1], ['perc', 'Percussion', 4], ['ride', 'Ride', 1], ['bass', 'Rumble bass', 4],
+    ['stab', 'Stab', 4], ['acid', 'Acid line', 4], ['build', 'Build-up', 8], ['impact', 'Impact', 1]],
   tracks: [['bass', 'Bass', 'tk_bass', 1], ['stab', 'Stab', 'tk_stab', 3], ['acid', 'Acid', 'tk_acid', 2]],
   patches: {
     tk_bass: synth('Techno Rumble', { wave: 'sine', wave2: 'sawtooth', mix2: 0.25, attack: 0.003, decay: 0.18, sustain: 0.25, release: 0.06, cutoff: 420, resonance: 2, filterEnv: 500, volume: 0.95 }),
@@ -411,8 +228,8 @@ const trance = {
     { name: 'Kick', roles: ['kick'] }, { name: 'Hats & clap', roles: ['hats'] }, { name: 'Ride', roles: ['ride'] }, { name: 'Bass', roles: ['bass'] },
     { name: 'Pad', roles: ['pad'] }, { name: 'Pluck', roles: ['pluck'] }, { name: 'Lead', roles: ['lead'] }, { name: 'FX', roles: ['build', 'impact'] },
   ],
-  patterns: [['kick', 'Kick', 4], ['hats', 'Hats & clap', 4], ['ride', 'Ride', 4], ['bass', 'Off-beat bass', 8], ['pad', 'Pad chords', 8],
-    ['pluck', 'Pluck arp', 8], ['lead', 'Lead melody', 8], ['build', 'Build-up', 8], ['impact', 'Impact', 4]],
+  patterns: [['kick', 'Kick', 1], ['hats', 'Hats & clap', 1], ['ride', 'Ride', 1], ['bass', 'Off-beat bass', 8], ['pad', 'Pad chords', 8],
+    ['pluck', 'Pluck arp', 8], ['lead', 'Lead melody', 8], ['build', 'Build-up', 8], ['impact', 'Impact', 1]],
   tracks: [['bass', 'Bass', 'tr_bass', 1], ['pluck', 'Pluck', 'tr_pluck', 4], ['lead', 'Lead', 'tr_lead', 4]],
   chordsPatch: ['tr_pad', 3],
   patches: {
@@ -568,8 +385,8 @@ const house = {
     { name: 'Kick', roles: ['kick'] }, { name: 'Tops', roles: ['hats'] }, { name: 'Percussion', roles: ['perc'] }, { name: 'Bass', roles: ['bass'] },
     { name: 'Piano', roles: ['keys'] }, { name: 'Pad', roles: ['pad'] }, { name: 'Hook', roles: ['hook'] }, { name: 'FX', roles: ['build', 'impact'] },
   ],
-  patterns: [['kick', 'Kick', 4], ['hats', 'Tops', 4], ['perc', 'Percussion', 4], ['bass', 'Bassline', 4], ['keys', 'Piano stabs', 4],
-    ['pad', 'Pad chords', 4], ['hook', 'Hook', 4], ['build', 'Build-up', 4], ['impact', 'Impact', 4]],
+  patterns: [['kick', 'Kick', 1], ['hats', 'Tops', 1], ['perc', 'Percussion', 4], ['bass', 'Bassline', 4], ['keys', 'Piano stabs', 4],
+    ['pad', 'Pad chords', 4], ['hook', 'Hook', 4], ['build', 'Build-up', 4], ['impact', 'Impact', 1]],
   tracks: [['bass', 'Bass', 'hs_bass', 2], ['keys', 'Piano', 'piano', 3], ['hook', 'Hook', 'hs_lead', 4]],
   chordsPatch: ['hs_pad', 3],
   patches: {
@@ -726,7 +543,7 @@ const dnb = {
     { name: 'Reese', roles: ['reese'] }, { name: 'Pad', roles: ['pad'] }, { name: 'Keys', roles: ['keys'] }, { name: 'FX', roles: ['build', 'impact'] },
   ],
   patterns: [['drums', 'Two-step', 4], ['hats', 'Hats', 4], ['ghosts', 'Ghost notes', 4], ['sub', 'Sub bass', 8], ['reese', 'Reese', 8],
-    ['pad', 'Pad chords', 8], ['keys', 'Keys', 8], ['build', 'Build-up', 8], ['impact', 'Impact', 4]],
+    ['pad', 'Pad chords', 8], ['keys', 'Keys', 8], ['build', 'Build-up', 8], ['impact', 'Impact', 1]],
   tracks: [['sub', 'Sub', 'dnb_sub', 1], ['reese', 'Reese', 'dnb_reese', 2], ['keys', 'Keys', 'dnb_pluck', 4]],
   chordsPatch: ['dnb_pad', 3],
   patches: {
@@ -926,8 +743,8 @@ const psy = {
     { name: 'Kick', roles: ['kick'] }, { name: 'Bass', roles: ['bass'] }, { name: 'Hats', roles: ['hats'] }, { name: 'Percussion', roles: ['perc'] },
     { name: 'Acid', roles: ['acid'] }, { name: 'Lead', roles: ['lead'] }, { name: 'Pad', roles: ['pad'] }, { name: 'FX', roles: ['build', 'impact'] },
   ],
-  patterns: [['kick', 'Kick', 4], ['bass', 'Rolling bass', 4], ['hats', 'Hats', 4], ['perc', 'Percussion', 4], ['acid', 'Acid line', 4],
-    ['lead', 'FM lead', 8], ['pad', 'Atmos pad', 8], ['build', 'Build-up', 8], ['impact', 'Impact', 4]],
+  patterns: [['kick', 'Kick', 1], ['bass', 'Rolling bass', 4], ['hats', 'Hats', 1], ['perc', 'Percussion', 4], ['acid', 'Acid line', 2],
+    ['lead', 'FM lead', 8], ['pad', 'Atmos pad', 8], ['build', 'Build-up', 8], ['impact', 'Impact', 1]],
   tracks: [['bass', 'Bass', 'psy_bass', 1], ['acid', 'Acid', 'psy_acid', 2], ['lead', 'Lead', 'psy_lead', 4]],
   chordsPatch: ['psy_pad', 3],
   patches: {
@@ -1016,7 +833,7 @@ const psy = {
         '• **Accents**: louder notes (Alt+scroll on a note) open the filter further.',
         'The squelch comes from riding the synth’s **Cutoff** and **Resonance**: Shift + knobs 2 and 3 on a Launchkey, or automation later.',
       ],
-      do: (p, c) => notes(c, 'acid', 'acid', [0, 1, 0, 1].flatMap((v, b) => PSY_ACID[v].map(([s, len, d, acc]) => [b * 16 + s, len, d, acc ? 1 : 0.72]))),
+      do: (p, c) => notes(c, 'acid', 'acid', [0, 1].flatMap((v, b) => PSY_ACID[v].map(([s, len, d, acc]) => [b * 16 + s, len, d, acc ? 1 : 0.72]))),
       check: (p, c) => hasNotes(c, 'acid', 'acid') },
     { id: 'chords', title: 'Harmony: drone and a dark turn', where: { tab: 'compose', role: 'pad', scroll: 'chords' },
       text: [
@@ -1127,15 +944,7 @@ const BALLAD_BRIDGE = [ // in D minor
   [[0, 8, 5], [8, 8, 3]], [[0, 8, 7], [8, 8, 5]], [[0, 8, 6], [8, 8, 3]], [[0, 8, 4], [8, 8, 1]],
   [[0, 8, 7], [8, 8, 5]], [[0, 8, 9], [8, 8, 7]], [[0, 8, 8], [8, 8, 6]], [[0, 16, 4]],
 ];
-const barsToNotes = (bars, vel = 0.8) => bars.flatMap((bar, b) => bar.map(([s, len, d]) => [b * 16 + s, len, d, s === 0 ? vel + 0.08 : vel]));
 
-// chord slots: degs, slot length, optional per-slot types
-function slotsInto(pat, degs, slotSteps, types = null, guide = true) {
-  const n = Math.ceil(pat.bars * STEPS_PER_BAR / slotSteps);
-  pat.chordSlots = Array.from({ length: n }, (_, i) => ({ deg: degs[i % degs.length], type: types ? types[i % types.length] : 'triad' }));
-  pat.slotSteps = slotSteps;
-  pat.chordsGuide = guide;
-}
 
 const BALLAD_ARP = { rate: 2, len: 2, shape: [0, 1, 2, 3, 4, 3, 2, 1], vels: [0.72, 0.5, 0.56, 0.5] };
 
@@ -1147,7 +956,7 @@ const ballad = {
     { name: 'Strings', roles: ['stringsV', 'stringsC', 'stringsB'] }, { name: 'Cello', roles: ['counter'] }, { name: 'Drums', roles: ['drums'] },
   ],
   patterns: [['intro', 'Intro', 8], ['verse', 'Verse', 8], ['chorus', 'Chorus', 8], ['bridge', 'Bridge', 8], ['outro', 'Outro', 8],
-    ['stringsV', 'Strings: verse', 8], ['stringsC', 'Strings: chorus', 8], ['stringsB', 'Strings: bridge', 8], ['counter', 'Cello line', 8], ['drums', 'Soft drums', 4]],
+    ['stringsV', 'Strings: verse', 8], ['stringsC', 'Strings: chorus', 8], ['stringsB', 'Strings: bridge', 8], ['counter', 'Cello line', 8], ['drums', 'Soft drums', 1]],
   patternKeys: { bridge: { scale: 'minor' }, stringsB: { scale: 'minor' } },
   tracks: [['piano', 'Piano', 'piano', 3], ['melody', 'Melody', 'sad_lead', 4], ['bass', 'Bass', 'ebass', 2], ['cello', 'Cello', 'sad_cello', 3]],
   chordsPatch: ['sad_strings', 3],
@@ -1357,8 +1166,8 @@ const midtempo = {
     { name: 'Drums', roles: ['drums'] }, { name: 'Hats', roles: ['hats'] }, { name: 'Bass', roles: ['bass'] }, { name: 'Sub', roles: ['sub'] },
     { name: 'Arp', roles: ['arp'] }, { name: 'Pad', roles: ['pad'] }, { name: 'FX', roles: ['build', 'impact'] },
   ],
-  patterns: [['drums', 'Kick & snare', 4], ['hats', 'Hats', 4], ['bass', 'Growl bass', 8], ['sub', 'Sub', 8], ['arp', 'Dark arp', 8],
-    ['pad', 'Pad chords', 8], ['build', 'Build-up', 8], ['impact', 'Impact', 4]],
+  patterns: [['drums', 'Kick & snare', 4], ['hats', 'Hats', 1], ['bass', 'Growl bass', 8], ['sub', 'Sub', 8], ['arp', 'Dark arp', 8],
+    ['pad', 'Pad chords', 8], ['build', 'Build-up', 8], ['impact', 'Impact', 1]],
   tracks: [['bass', 'Bass', 'mt_bass', 2], ['sub', 'Sub', 'mt_sub', 1], ['arp', 'Arp', 'mt_arp', 4]],
   chordsPatch: ['mt_pad', 3],
   patches: {
@@ -1511,8 +1320,8 @@ const hardcore = {
     { name: 'Kick', roles: ['kick'] }, { name: 'Hats & clap', roles: ['hats'] }, { name: 'Lead', roles: ['lead'] }, { name: 'Screech', roles: ['screech'] },
     { name: 'Pad', roles: ['pad'] }, { name: 'FX', roles: ['build', 'impact'] },
   ],
-  patterns: [['kick', 'Distorted kick', 4], ['hats', 'Hats & clap', 4], ['lead', 'Anthem lead', 8], ['screech', 'Hoover screech', 8],
-    ['pad', 'Pad chords', 8], ['build', 'Kick roll build', 8], ['impact', 'Impact', 4]],
+  patterns: [['kick', 'Distorted kick', 1], ['hats', 'Hats & clap', 1], ['lead', 'Anthem lead', 8], ['screech', 'Hoover screech', 8],
+    ['pad', 'Pad chords', 8], ['build', 'Kick roll build', 8], ['impact', 'Impact', 1]],
   tracks: [['lead', 'Lead', 'hc_lead', 4], ['screech', 'Screech', 'hc_hoover', 3]],
   chordsPatch: ['hc_pad', 3],
   patches: {
@@ -1649,7 +1458,14 @@ const hardcore = {
   ],
 };
 
-export const GENRES = { techno, trance, house, dnb, psy, midtempo, hardcore, ballad };
+export const GENRES = { techno, trance, house, dnb, psy, midtempo, hardcore, ...GUIDES2, ballad };
+for (const G of Object.values(GENRES)) G.category ||= 'electronic';
+ballad.category = 'mood';
+export const CATEGORIES = [
+  { id: 'electronic', name: 'Electronic', blurb: 'Element by element: drums, bass, chords, hook, build-ups, drops.' },
+  { id: 'band', name: 'Songs & bands', blurb: 'Song forms with verses and choruses, and the styles bands play.' },
+  { id: 'mood', name: 'Moods & quiet music', blurb: 'Slow, emotional or relaxed pieces: chords, melody and space.' },
+];
 
 // ---------- Template ----------
 export function createGuideProject(genreId) {
@@ -1657,26 +1473,27 @@ export function createGuideProject(genreId) {
   const p = blankProject(`My ${G.name} track`);
   p.bpm = G.bpm;
   p.swing = G.swing;
+  p.swingGrid = G.swingGrid || 16;
   Object.assign(p.patches, structuredClone(G.patches));
   for (const [kind, params] of Object.entries(G.drumParams)) Object.assign(p.drumParams[kind], params);
   const VOL = { kick: 0.95, snare: genreId === 'dnb' ? 0.9 : 0.6, clap: 0.55, rim: 0.35, chat: 0.32, ohat: 0.38, ltom: 0.5, mtom: 0.5, htom: 0.45,
     cowbell: 0.4, cymbal: 0.35, shaker: 0.28, ride: 0.28, riser: 0.5, impact: 0.8 };
   for (const r of p.drums.rows) r.vol = VOL[r.kind] ?? r.vol;
 
-  p.tracks = G.tracks.map(([, name, patch, octave], i) => newTrack(name, patch, octave, TRACK_COLORS[i % TRACK_COLORS.length]));
+  p.tracks = G.tracks.map(([, name, patch, octave, mode], i) => newTrack(name, patch, octave, TRACK_COLORS[i % TRACK_COLORS.length], [], mode || 'scale'));
   if (G.chordsPatch) { p.chords.patch = G.chordsPatch[0]; p.chords.octave = G.chordsPatch[1]; }
-  p.chords.style = 'block';
+  p.chords.style = G.chordsStyle || 'block';
   p.chords.slots = [];
 
   p.root = G.root; p.scale = G.scale; p.keyChanges = []; p.bars = 4;
   p.patterns = [];
   const pats = {};
   G.patterns.forEach(([role, name, bars], i) => { pats[role] = addPattern(p, name, bars, PATTERN_COLORS[i % PATTERN_COLORS.length]).id; });
-  for (const [role, key] of Object.entries(G.patternKeys || {})) Object.assign(p.patterns.find(x => x.id === pats[role]), key);
+  for (const [role, key] of Object.entries(G.patternKeys || {})) Object.assign(p.patterns.find(x => x.id === pats[role]), structuredClone(key));
   if (G.drumsVolume) p.drums.volume = G.drumsVolume;
   p.currentPattern = p.patterns[0].id;
   // the editors show the first pattern: take its length and key, so opening it doesn't overwrite them
-  Object.assign(p, { bars: p.patterns[0].bars, root: p.patterns[0].root, scale: p.patterns[0].scale });
+  Object.assign(p, { bars: p.patterns[0].bars, root: p.patterns[0].root, scale: p.patterns[0].scale, keyChanges: structuredClone(p.patterns[0].keyChanges || []) });
   const tracks = {};
   G.tracks.forEach(([role], i) => { tracks[role] = p.tracks[i].id; });
   p.guide = { genre: genreId, step: 0, done: {}, roles: { pats, tracks } };
@@ -1711,3 +1528,4 @@ export function stepPlace(p, step) {
   const w = step.where || {};
   return { tab: w.tab, patternId: w.role ? p.guide.roles.pats[w.role] : null, trackId: w.track ? p.guide.roles.tracks[w.track] : null, scroll: w.scroll };
 }
+export { totalBars } from './guidekit.js';

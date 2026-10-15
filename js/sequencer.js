@@ -148,8 +148,12 @@ export function songTimeline(p) {
 const GATE = [2, 0, 1, 1, 0, 1, 1, 0, 2, 0, 1, 1, 0, 1, 1, 1]; // 2 = accented 16th, 1 = soft, 0 = silent
 
 // Swing delays every second 16th note.
+// swingGrid 16: every second 16th is late (house, hip hop). swingGrid 8: the second 8th of every beat is
+// late, the blues / jazz shuffle; at Swing 33% it lands exactly on the last triplet of the beat.
 export function swingOffset(p, step) {
-  return (Math.floor(step) % 2 === 1 ? p.swing * 0.5 : 0);
+  const s = Math.floor(step);
+  if (p.swingGrid === 8) return s % 4 === 2 ? p.swing * 2 : 0;
+  return s % 2 === 1 ? p.swing * 0.5 : 0;
 }
 
 // ---------- Live transport ----------
@@ -337,7 +341,10 @@ export function currentVisualStep() {
 
 // ---------- Offline render to WAV ----------
 // song: render the whole playlist once; otherwise the open pattern `loops` times.
-export async function renderWav({ song = false, loops = 2 } = {}) {
+// onProgress(fraction 0..1, phase text) is called along the way; cancel.cancelled = true stops it.
+// Phases: loading sounds, rendering (the offline renderer pauses every couple of seconds of audio to report
+// progress and place the next notes), encoding.
+export async function renderWav({ song = false, loops = 2, onProgress = () => {}, cancel = {} } = {}) {
   const p = store.project;
   const sd = stepDuration(p.bpm);
   const tl = song ? songTimeline(p) : patternTimeline(p);
@@ -346,6 +353,10 @@ export async function renderWav({ song = false, loops = 2 } = {}) {
   const tail = Math.max(2, p.fxBus.reverbSize + 1);
   const sr = 44100;
   const total = L * sd * loops + tail;
+  const stopped = () => { if (cancel.cancelled) throw Object.assign(new Error('Cancelled'), { cancelled: true }); };
+  const yieldUI = () => new Promise(r => setTimeout(r, 0));
+
+  onProgress(0, 'Loading sounds…');
   const ctx = new OfflineAudioContext(2, Math.ceil(total * sr), sr);
   const mixer = new Mixer(ctx);
   mixer.immediate = true;
@@ -355,14 +366,27 @@ export async function renderWav({ song = false, loops = 2 } = {}) {
   // make sure sampled instruments are loaded before rendering
   const sets = new Set(events.map(e => p.patches[e.patch]).filter(x => x?.kind === 'sampler').map(x => x.set));
   await Promise.all([...sets].map(loadSampleSet));
+  stopped();
 
+  // Notes are created just ahead of the renderer, a window at a time: the renderer pauses at each window's start,
+  // the next window's notes are placed, and it carries on. Creating every note up front makes the browser process
+  // thousands of waiting nodes on every audio block, which gets slower and slower as songs get longer.
   const start = 0.05;
-  for (let s = 0; s < L * loops; s += 4) mixer.pumpAt(start + s * sd, sd * 4, p.fxBus.pumpRelease);
+  const jobs = [];
   for (let loop = 0; loop < loops; loop++) {
-    let open = null;
     for (const e of events) {
       if (!e.audible && e.kind !== 'auto') continue;
-      const t = start + (loop * L + e.step + swingOffset(p, e.step)) * sd;
+      jobs.push({ t: start + (loop * L + e.step + swingOffset(p, e.step)) * sd, e });
+    }
+  }
+  jobs.sort((x, y) => x.t - y.t);
+  const pumps = [];
+  for (let s = 0; s < L * loops; s += 4) pumps.push(start + s * sd);
+  let ji = 0, pi = 0, open = null;
+  const place = until => {
+    while (pi < pumps.length && pumps[pi] < until) mixer.pumpAt(pumps[pi++], sd * 4, p.fxBus.pumpRelease);
+    while (ji < jobs.length && jobs[ji].t < until) {
+      const { t, e } = jobs[ji++];
       if (e.kind === 'auto') {
         applyAuto(mixer, p, e, t);
       } else if (e.kind === 'note') {
@@ -375,9 +399,34 @@ export async function renderWav({ song = false, loops = 2 } = {}) {
         if (e.row.kind === 'ohat') open = v;
       }
     }
-  }
-  const buf = await ctx.startRendering();
-  return encodeWav(buf);
+  };
+
+  // rendering: 2..97%
+  const WINDOW = 2; // seconds
+  const block = t => Math.floor(t * sr / 128) * 128 / sr; // pauses sit on render-block boundaries
+  const bounds = [];
+  for (let t = WINDOW; t < total; t += WINDOW) bounds.push(block(t));
+  let cancelRender;
+  const cancelled = new Promise((_, reject) => { cancelRender = reject; });
+  // Cancel answers at once; the renderer itself stops at its next pause, where it is no longer resumed.
+  cancel.onCancel = () => cancelRender(Object.assign(new Error('Cancelled'), { cancelled: true }));
+  bounds.forEach((t, i) => {
+    ctx.suspend(t).then(() => {
+      onProgress(0.02 + 0.95 * t / total, 'Rendering…');
+      if (cancel.cancelled) { cancel.onCancel(); return; }
+      place(bounds[i + 1] ?? Infinity);
+      ctx.resume();
+    });
+  });
+  place(bounds[0] ?? Infinity);
+  stopped();
+  onProgress(0.02, 'Rendering…');
+  const buf = await Promise.race([ctx.startRendering(), cancelled]);
+  onProgress(0.98, 'Encoding the WAV…');
+  await yieldUI();
+  const wav = encodeWav(buf);
+  onProgress(1, 'Done');
+  return wav;
 }
 
 function encodeWav(buf) {

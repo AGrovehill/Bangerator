@@ -217,10 +217,15 @@ canvas.roll { display: block; cursor: crosshair; touch-action: none; }
 .step.v2 { background: var(--row-color, var(--accent)); box-shadow: 0 0 0 2px #fff inset; }
 .step.now { outline: 2px solid #fff; }
 .drum-head { align-items: center; padding: 0 8px; gap: 5px; }
-.drum-head .dname { flex: 1; font-size: 12px; font-weight: 600; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the name gets the room: up to two lines, then … (the tooltip has the full name) */
+.drum-head .dname {
+  flex: 1 1 auto; min-width: 0; font-size: 11.5px; line-height: 12px; font-weight: 600; cursor: pointer;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word;
+}
+.drum-head .dpitch { margin-left: 4px; font-size: 10px; font-weight: 700; color: var(--accent2); }
 .drum-head .dname:hover { color: var(--accent); }
-.drum-head input[type=range] { width: 50px; }
-.drum-head .btn { padding: 1px 5px; font-size: 11px; }
+.drum-head input[type=range] { width: 40px; flex: 0 0 40px; }
+.drum-head .btn { padding: 1px 5px; font-size: 11px; flex: 0 0 auto; }
 .drum-lane.drop .lane-head { outline: 2px dashed var(--accent); }
 
 /* ---------- Sound design ---------- */
@@ -273,6 +278,7 @@ canvas.scope, canvas.envcv { width: 100%; height: 110px; background: var(--bg); 
 .seg button[data-mode=song].on { background: #ff922b; }
 .pat-dot { width: 12px; height: 12px; border-radius: 3px; flex: 0 0 12px; }
 #in-pattern { max-width: 160px; }
+#in-swinggrid { font-size: 12px; padding: 3px 4px; }
 .save-status {
   display: inline-flex; align-items: center; gap: 6px; max-width: 280px; background: none; border: 1px solid transparent;
   border-radius: 6px; padding: 4px 8px; cursor: pointer; color: var(--muted); font-size: 12px;
@@ -468,6 +474,8 @@ aside.guide[hidden] { display: none; }
 .guide-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 .guide-nav { display: flex; justify-content: space-between; }
 .guide-foot { margin-top: auto; }
+.genre-cat { margin: 14px 0 6px; font-size: 14px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.genre-cat span { font-weight: 400; font-size: 12px; color: var(--muted); }
 .genre-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0; }
 .genre-card {
   text-align: left; background: var(--bg3); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; cursor: pointer;
@@ -503,6 +511,22 @@ aside.guide[hidden] { display: none; }
 .vel-head .head-row .btn { font-size: 11px; padding: 2px 6px; }
 .vel-cv { display: block; cursor: ns-resize; touch-action: none; }
 .vel-lane .lane-body { border-top: 1px dashed var(--line); }
+
+/* ---------- Progress bar ---------- */
+.progress { height: 12px; background: var(--bg4); border-radius: 6px; overflow: hidden; margin: 12px 0 6px; }
+.progress-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #ff922b); border-radius: 6px; transition: width .15s; }
+.progress-info { display: flex; justify-content: space-between; font-size: 13px; }
+
+/* ---------- Folded lanes ---------- */
+.collapsed-lane { cursor: pointer; }
+.collapsed-lane .lane-head { align-items: center; gap: 6px; padding: 0 10px; height: 18px; font-size: 11px; color: var(--muted); }
+.collapsed-lane.small .lane-head { height: 14px; font-size: 10px; }
+.collapsed-lane .color-dot { width: 7px; height: 7px; flex-basis: 7px; opacity: .7; }
+.collapsed-lane .cl-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.collapsed-lane .cl-open { opacity: .6; }
+.collapsed-lane .lane-body { flex: 1; display: flex; align-items: center; padding-left: 10px; background: repeating-linear-gradient(90deg, transparent 0 6px, rgba(255,255,255,0.02) 6px 12px); }
+.collapsed-lane .cl-why { font-size: 10px; color: #5c6175; position: sticky; left: calc(var(--head-w) + 10px); }
+.collapsed-lane:hover .lane-head, .collapsed-lane:hover .cl-why { color: var(--text); }
 
 /* ---------- Misc ---------- */
 .toast {

@@ -1,7 +1,7 @@
 // The genre guide panel (right-hand side) and the "pick a genre" dialog.
 
 import { store, commit, openPattern, songBars, saveQuietly } from '../state.js';
-import { GENRES, createGuideProject, guideOf, runStep, stepPlace, totalBars } from '../guides.js';
+import { GENRES, CATEGORIES, createGuideProject, guideOf, runStep, stepPlace, totalBars } from '../guides.js';
 import { createProject } from '../storage.js';
 import { stepDuration } from '../sequencer.js';
 import { h, modal, toast, ui } from './common.js';
@@ -159,8 +159,9 @@ export function showGenreChooser() {
   modal('<h2>Make a track with a guide</h2><div id="genres"></div>', box => box.classList.add('wide'));
   const el = document.getElementById('genres');
   el.replaceChildren(
-    h('p', { class: 'hint' }, 'Each guide starts a new project with the right tempo, sounds and drum kit, and walks you through every phase: drums, bass, chords, hook, mix, build-ups, arrangement and automation. Do each step yourself or let it be done for you; either way you end with a full-length song.'),
-    h('div', { class: 'genre-grid' }, ...Object.values(GENRES).map(G => {
+    h('p', { class: 'hint' }, 'Each guide starts a new project with the right tempo, sounds and instruments, and walks you through writing a whole piece: chords, rhythm, bass, melody, mix and arrangement, with the music theory behind each step. Do each step yourself or let it be done for you; either way you end with a finished song.'),
+    ...CATEGORIES.flatMap(cat => [h('h3', { class: 'genre-cat' }, cat.name, h('span', {}, cat.blurb)),
+      h('div', { class: 'genre-grid' }, ...Object.values(GENRES).filter(G => G.category === cat.id).map(G => {
       const secs = totalBars(G) * 4 * 60 / G.bpm;
       const card = h('button', { class: 'genre-card' },
         h('b', {}, G.name),
@@ -181,6 +182,6 @@ export function showGenreChooser() {
         }
       });
       return card;
-    })),
+    }))]),
     h('div', { class: 'actions' }, h('button', { class: 'btn', onclick: () => { document.getElementById('modal').hidden = true; } }, 'Cancel')));
 }

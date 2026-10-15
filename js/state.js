@@ -498,6 +498,7 @@ export function migrate(p) {
   p.song ||= { lanes: defaultLanes(), clips: [], loop: null };
   p.song.auto ||= [];
   p.song.markers ||= [];
+  p.swingGrid ||= 16;
   p.guide ??= null;
   for (const pat of p.patterns) pat.auto ||= [];
   if (!p.song.lanes?.length) p.song.lanes = defaultLanes();
