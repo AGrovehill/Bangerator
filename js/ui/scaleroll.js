@@ -3,8 +3,10 @@
 //  - Piano roll: every row is one of the 12 notes, like a normal DAW. Notes keep their exact pitch;
 //    the current scale is only highlighted, and notes outside it get a red dashed outline.
 // In both modes, rows that belong to the chord playing at that moment are tinted.
+// Several notes can be selected (Ctrl+drag a box, Ctrl+click) and then moved, resized, copied, pasted,
+// transposed with the arrow keys or deleted together. Alt+wheel changes velocity.
 
-import { scaleSteps, degToSemis, intervalLabel, spellMidi, chordPitchClasses, chordFunction, harmonyScaleId, mod } from '../theory.js';
+import { scaleSteps, degToSemis, semisToNearestDeg, intervalLabel, spellMidi, chordPitchClasses, chordFunction, harmonyScaleId, mod } from '../theory.js';
 import { STEPS_PER_BAR, sections, sectionRange, keyAt, inScale } from '../state.js';
 
 const FN_RGB = { home: '81,207,102', away: '77,171,247', tension: '255,146,43' };
@@ -24,21 +26,42 @@ export class ScaleRoll {
     this.canvas.className = 'roll';
     this.lastLen = 2;
     this.drag = null;
+    this.sel = new Set();   // selected notes
+    this.hoverStep = null;
     this.bind();
   }
 
   get p() { return this.opts.project(); }
   get piano() { return this.track.mode === 'piano'; }
   get secs() { return sections(this.p); }
-  get rows() {
-    if (this.piano) return 12 * this.track.range + 1;
-    return Math.max(...this.secs.map(s => scaleSteps(s.scale).length)) * this.track.range + 1;
-  }
   get lowMidi() { return 12 * (this.track.octave + 1); }
+  get octaveRows() { return this.piano ? 12 : Math.max(...this.secs.map(s => scaleSteps(s.scale).length)); }
+
+  // The rows run from span.lo to span.hi (degrees, or MIDI notes in piano mode): the track's own range
+  // (from its octave, `range` octaves up), widened by whole octaves so that notes below or above it
+  // are drawn on their real rows. Fixed while dragging, so the grid doesn't move under the mouse.
+  computeSpan() {
+    const n = this.octaveRows;
+    let lo = this.piano ? this.lowMidi : 0;
+    const home = lo + n * this.track.range;
+    let hi = home;
+    const L = this.opts.loopSteps();
+    for (const note of this.track.notes) {
+      if (note.step >= L) continue;
+      const v = this.noteValue(note);
+      while (v < lo) lo -= n;
+      while (v > hi) hi += n;
+    }
+    return { lo, hi, home };
+  }
+  get span() { return this._span || (this._span = this.computeSpan()); }
+  get rows() { return this.span.hi - this.span.lo + 1; }
 
   // row <-> value (a degree in scale mode, a MIDI note in piano mode)
-  rowValue(r) { return this.piano ? this.lowMidi + this.rows - 1 - r : this.rows - 1 - r; }
-  valueRow(v) { return this.piano ? this.lowMidi + this.rows - 1 - v : this.rows - 1 - v; }
+  rowValue(r) { return this.span.hi - r; }
+  valueRow(v) { return this.span.hi - v; }
+  // Rows above what a smaller scale reaches (when sections use scales of different sizes) are shaded.
+  beyond(v, n) { return !this.piano && v > this.span.hi - (this.octaveRows - n) * this.track.range && n < this.octaveRows; }
   noteValue(n) { return this.piano ? n.midi : n.deg; }
   setNoteValue(n, v) { if (this.piano) n.midi = v; else n.deg = v; }
 
@@ -56,6 +79,7 @@ export class ScaleRoll {
   }
 
   render() {
+    if (!this.drag) this._span = this.computeSpan();
     const { w, h, dpr } = this.size();
     this.drawKeys(h);
     const g = this.canvas.getContext('2d');
@@ -79,7 +103,7 @@ export class ScaleRoll {
           if (rel === 0) fill = 'rgba(255,212,59,0.10)';
           else if (steps.includes(rel)) fill = 'rgba(255,255,255,0.045)';
         } else {
-          if (v > steps.length * this.track.range) fill = 'rgba(0,0,0,0.45)'; // beyond this scale's range
+          if (this.beyond(v, steps.length)) fill = 'rgba(0,0,0,0.45)'; // beyond this scale's range
           else if (mod(v, steps.length) === 0) fill = 'rgba(255,212,59,0.07)';
         }
         if (fill) { g.fillStyle = fill; g.fillRect(x0, r * rh, x1 - x0, rh); }
@@ -133,7 +157,7 @@ export class ScaleRoll {
         g.fillStyle = 'rgba(177,151,252,0.8)';
         for (let r = 0; r < this.rows; r++) {
           const v = this.rowValue(r);
-          if (v <= n * this.track.range) g.fillText(String(mod(v, n) + 1), x + 3, r * rh + rh / 2 + 1);
+          if (!this.beyond(v, n)) g.fillText(String(mod(v, n) + 1), x + 3, r * rh + rh / 2 + 1);
         }
       }
     });
@@ -156,6 +180,10 @@ export class ScaleRoll {
         g.save(); g.strokeStyle = '#ff6b6b'; g.lineWidth = 2; g.setLineDash([4, 3]);
         roundRect(g, x + 1, y + 1, nw - 2, nh - 2, 4); g.stroke(); g.restore();
       }
+      if (this.sel.has(note)) {
+        g.save(); g.strokeStyle = '#fff'; g.lineWidth = 2;
+        roundRect(g, x + 1, y + 1, nw - 2, nh - 2, 4); g.stroke(); g.restore();
+      }
       g.fillStyle = 'rgba(0,0,0,0.25)';
       g.fillRect(x + nw - 4, y + 2, 2, nh - 4); // resize grip
       g.fillStyle = '#111';
@@ -170,11 +198,18 @@ export class ScaleRoll {
         if (p.showNoteNames) label += ' ' + spellMidi(this.midiOf(note), k.root, k.scale);
       }
       if (clipped) label = (clipped < 0 ? '▲' : '▼') + label;
+      if (this.velHint?.note === note && this.velHint.until > performance.now()) label = `vel ${Math.round((note.vel ?? 0.85) * 100)}`;
       if (nw > 12) {
         g.save(); g.beginPath(); g.rect(x, y, nw - 5, nh); g.clip();
         g.fillText(label, x + 4, y + nh / 2 + 1);
         g.restore();
       }
+    }
+    if (this.drag?.mode === 'box') {
+      const d = this.drag;
+      g.save(); g.strokeStyle = '#fff'; g.setLineDash([4, 3]); g.fillStyle = 'rgba(255,255,255,0.08)';
+      const bx = Math.min(d.x0, d.x1), by = Math.min(d.y0, d.y1), bw = Math.abs(d.x1 - d.x0), bh = Math.abs(d.y1 - d.y0);
+      g.fillRect(bx, by, bw, bh); g.strokeRect(bx + 0.5, by + 0.5, bw, bh); g.restore();
     }
   }
 
@@ -225,7 +260,7 @@ export class ScaleRoll {
         }
         continue;
       }
-      const beyond = v > n * this.track.range;
+      const beyond = this.beyond(v, n);
       const d = mod(v, n);
       if (!beyond && d === 0) { g.fillStyle = '#3b3520'; g.fillRect(0, y, KEYS_W, rh); }
       g.strokeStyle = d === 0 ? '#4a5066' : '#2a2e3a';
@@ -269,54 +304,201 @@ export class ScaleRoll {
     else this.opts.onPreviewDeg(this.track, note.deg, note.alt || 0, note.step);
   }
 
+  // ---------- Selection ----------
+  // Ctrl+drag draws a box, Ctrl+click toggles one note. Dragging or resizing a selected note moves them all.
+  removeNotes(list) {
+    const kill = new Set(list);
+    this.track.notes = this.track.notes.filter(n => !kill.has(n));
+    for (const n of list) this.sel.delete(n);
+  }
+
+  selectAll() { this.sel = new Set(this.track.notes.filter(n => n.step < this.opts.loopSteps())); this.render(); }
+  clearSel() { if (this.sel.size) { this.sel.clear(); this.render(); } }
+
+  deleteSel() {
+    if (!this.sel.size) return false;
+    this.removeNotes([...this.sel]);
+    this.opts.onCommit();
+    return true;
+  }
+
+  copySel() {
+    if (!this.sel.size) return false;
+    const notes = [...this.sel].sort((a, b) => a.step - b.step);
+    const start = notes[0].step;
+    const end = Math.max(...notes.map(n => n.step + n.len));
+    clipboard = {
+      piano: this.piano, octave: this.track.octave, start, span: end - start,
+      notes: notes.map(n => ({ d: n.step - start, len: n.len, vel: n.vel, value: this.noteValue(n), alt: n.alt || 0, at: n.step })),
+    };
+    return true;
+  }
+
+  // Paste at `at` (default: under the mouse, else right after where it was copied from).
+  paste(at = null) {
+    if (!clipboard) return false;
+    const L = this.opts.loopSteps();
+    const p = this.p;
+    if (at == null) at = this.hoverStep != null ? Math.floor(this.hoverStep / 4) * 4 : clipboard.start + Math.ceil(clipboard.span / 4) * 4;
+    if (at >= L) at = clipboard.start;
+    this.sel.clear();
+    for (const c of clipboard.notes) {
+      const step = at + c.d;
+      if (step >= L) continue;
+      const note = { step, len: Math.min(c.len, L - step), vel: c.vel ?? 0.85 };
+      const k = keyAt(p, step);
+      const steps = scaleSteps(k.scale);
+      if (clipboard.piano === this.piano) {
+        this.setNoteValue(note, c.value);
+        if (!this.piano && c.alt) note.alt = c.alt;
+      } else if (this.piano) { // degrees -> pitches, in the key where they land
+        note.midi = 12 * (clipboard.octave + 1) + k.root + degToSemis(steps, c.value) + c.alt;
+      } else { // pitches -> degrees
+        const rel = c.value - (12 * (this.track.octave + 1) + k.root);
+        note.deg = semisToNearestDeg(steps, rel);
+        const alt = rel - degToSemis(steps, note.deg);
+        if (alt) note.alt = alt;
+      }
+      this.track.notes.push(note);
+      this.sel.add(note);
+    }
+    this.opts.onCommit();
+    return true;
+  }
+
+  duplicateSel() {
+    if (!this.copySel()) return false;
+    return this.paste(clipboard.start + Math.ceil(clipboard.span / 4) * 4);
+  }
+
+  // Move the selection: dr rows up (+) or down, ds steps right (+) or left.
+  shiftSel(dr, ds) {
+    if (!this.sel.size) return false;
+    const L = this.opts.loopSteps();
+    const notes = [...this.sel];
+    ds = Math.max(-Math.min(...notes.map(n => n.step)), Math.min(ds, Math.min(...notes.map(n => L - n.step - n.len))));
+    for (const n of notes) {
+      n.step += ds;
+      if (dr) { this.setNoteValue(n, this.noteValue(n) + dr); delete n.src; }
+    }
+    if (dr && notes.length) this.preview(notes[0]);
+    this.opts.onCommit();
+    return true;
+  }
+
+  // Handles a key press for this roll; returns true when it used it.
+  key(e) {
+    const mod = e.ctrlKey || e.metaKey;
+    const k = e.key.toLowerCase();
+    if (mod && k === 'a') { this.selectAll(); return true; }
+    if (mod && k === 'v') return this.paste();
+    if (!this.sel.size) return false;
+    if (k === 'escape') { this.clearSel(); return true; }
+    if (k === 'delete' || k === 'backspace') return this.deleteSel();
+    if (mod && k === 'c') return this.copySel();
+    if (mod && k === 'x') { this.copySel(); return this.deleteSel(); }
+    if (mod && k === 'd') return this.duplicateSel();
+    const oct = this.piano ? 12 : scaleSteps(this.secs[0].scale).length;
+    if (k === 'arrowup') return this.shiftSel(e.shiftKey ? oct : 1, 0);
+    if (k === 'arrowdown') return this.shiftSel(e.shiftKey ? -oct : -1, 0);
+    if (k === 'arrowleft') return this.shiftSel(0, e.shiftKey ? -4 : -1);
+    if (k === 'arrowright') return this.shiftSel(0, e.shiftKey ? 4 : 1);
+    return false;
+  }
+
   bind() {
     const cv = this.canvas;
     cv.addEventListener('contextmenu', e => e.preventDefault());
+    cv.addEventListener('pointerleave', () => { this.hoverStep = null; });
     cv.addEventListener('pointerdown', e => {
-      const { step, fx, row } = this.cellAt(e);
+      const { x, y, step, fx, row } = this.cellAt(e);
       const L = this.opts.loopSteps();
       if (step < 0 || step >= L || row < 0 || row >= this.rows) return;
       this.opts.onSelect?.(this.track);
+      activeRoll = this;
       const h = this.hit(fx, row);
-      if (e.button === 2) { // right click deletes
-        if (h) { this.track.notes.splice(this.track.notes.indexOf(h.note), 1); this.opts.onCommit(); }
+      if (e.button === 2) { // right click deletes (the whole selection, if the note is part of it)
+        if (h) { this.removeNotes(this.sel.has(h.note) ? [...this.sel] : [h.note]); this.opts.onCommit(); }
         return;
       }
       cv.setPointerCapture(e.pointerId);
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (ctrl && h) { // toggle one note
+        if (this.sel.has(h.note)) this.sel.delete(h.note); else this.sel.add(h.note);
+        this.render();
+        return;
+      }
+      if (ctrl) { // box select (Shift keeps what was selected)
+        this.drag = { mode: 'box', x0: x, y0: y, x1: x, y1: y, base: new Set(e.shiftKey ? this.sel : []) };
+        if (!e.shiftKey) this.sel.clear();
+        this.render();
+        return;
+      }
       if (h) {
-        this.drag = { mode: h.edge ? 'resize' : 'move', note: h.note, startStep: step, startRow: row,
-          orig: { step: h.note.step, value: this.noteValue(h.note), len: h.note.len }, moved: false, shift: e.shiftKey };
+        if (!this.sel.has(h.note)) this.sel.clear();
+        const group = this.sel.size ? [...this.sel] : [h.note];
+        this.drag = { mode: h.edge ? 'resize' : 'move', note: h.note, group, multi: this.sel.size > 0,
+          origs: group.map(n => ({ n, step: n.step, value: this.noteValue(n), len: n.len })),
+          startStep: step, startRow: row, moved: false, shift: e.shiftKey };
         if (!h.edge) this.preview(h.note);
+        this.render();
+      } else if (this.sel.size) {
+        this.clearSel(); // the first click on empty space only drops the selection
       } else {
         const note = { step, len: Math.min(this.lastLen, L - step), vel: 0.85 };
         this.setNoteValue(note, this.rowValue(row));
         this.track.notes.push(note);
-        this.drag = { mode: 'resize', note, startStep: step, startRow: row, orig: { ...note }, moved: true, created: true };
+        this.drag = { mode: 'resize', note, group: [note], multi: false, origs: [{ n: note, step, value: this.noteValue(note), len: note.len }],
+          startStep: step, startRow: row, moved: true, created: true };
         this.preview(note);
         this.render();
       }
     });
     cv.addEventListener('pointermove', e => {
-      const { step, fx, row } = this.cellAt(e);
+      const { x, y, step, fx, row } = this.cellAt(e);
+      this.hoverStep = step;
       if (!this.drag) {
         const h = step >= 0 && row >= 0 && row < this.rows ? this.hit(fx, row) : null;
         cv.style.cursor = h ? (h.edge ? 'ew-resize' : 'grab') : 'crosshair';
         return;
       }
       const d = this.drag, L = this.opts.loopSteps();
-      if (d.mode === 'resize') {
-        const len = Math.max(1, Math.min(L - d.note.step, Math.ceil(fx) - d.note.step));
-        if (len !== d.note.len) { d.note.len = len; d.moved = true; this.render(); }
+      const cw = this.opts.cellW(), rh = this.opts.rowH;
+      if (d.mode === 'box') {
+        d.x1 = x; d.y1 = y;
+        const s0 = Math.min(d.x0, x) / cw, s1 = Math.max(d.x0, x) / cw;
+        const r0 = Math.floor(Math.min(d.y0, y) / rh), r1 = Math.floor(Math.max(d.y0, y) / rh);
+        this.sel = new Set(d.base);
+        for (const n of this.track.notes) {
+          const nr = Math.max(0, Math.min(this.rows - 1, this.valueRow(this.noteValue(n))));
+          if (n.step < L && n.step < s1 && n.step + n.len > s0 && nr >= r0 && nr <= r1) this.sel.add(n);
+        }
+        this.render();
+      } else if (d.mode === 'resize') {
+        const main = d.origs.find(o => o.n === d.note);
+        const dLen = Math.max(1, Math.ceil(fx) - d.note.step) - main.len;
+        let changed = false;
+        for (const o of d.origs) {
+          const len = Math.max(1, Math.min(L - o.n.step, o.len + dLen));
+          if (len !== o.n.len) { o.n.len = len; changed = true; }
+        }
+        if (changed) { d.moved = true; this.render(); }
       } else {
-        const ds = step - d.startStep, dr = row - d.startRow;
+        let ds = step - d.startStep, dr = row - d.startRow;
         if (!ds && !dr && !d.moved) return;
-        const nstep = Math.max(0, Math.min(L - d.note.len, d.orig.step + ds));
-        const origRow = Math.max(0, Math.min(this.rows - 1, this.valueRow(d.orig.value)));
-        const nval = this.rowValue(Math.max(0, Math.min(this.rows - 1, origRow + dr)));
-        const changed = nval !== this.noteValue(d.note);
-        if (nstep !== d.note.step || changed) {
-          d.note.step = nstep; this.setNoteValue(d.note, nval); d.moved = true;
-          if (changed) this.preview(d.note);
+        // keep the whole group inside the grid
+        ds = Math.max(-Math.min(...d.origs.map(o => o.step)), Math.min(ds, Math.min(...d.origs.map(o => L - o.step - o.len))));
+        const rowsOf = d.origs.map(o => Math.max(0, Math.min(this.rows - 1, this.valueRow(o.value))));
+        dr = Math.max(-Math.min(...rowsOf), Math.min(dr, this.rows - 1 - Math.max(...rowsOf)));
+        let changed = false, pitchChanged = false;
+        d.origs.forEach((o, i) => {
+          const nval = this.rowValue(rowsOf[i] + dr);
+          if (o.n.step !== o.step + ds) { o.n.step = o.step + ds; changed = true; }
+          if (nval !== this.noteValue(o.n)) { this.setNoteValue(o.n, nval); changed = pitchChanged = true; }
+        });
+        if (changed) {
+          d.moved = true;
+          if (pitchChanged) this.preview(d.note);
           this.render();
         }
       }
@@ -325,23 +507,42 @@ export class ScaleRoll {
       const d = this.drag;
       if (!d) return;
       this.drag = null;
-      if (!d.moved && d.mode !== 'resize') {
-        if (d.shift && !this.piano) { // cycle natural -> sharp -> flat
+      if (d.mode === 'box') { this.render(); return; }
+      if (!d.moved && d.mode === 'move') {
+        if (d.multi) {
+          this.sel.clear(); // a plain click on a selected note just lets go of the selection
+        } else if (d.shift && !this.piano) { // cycle natural -> sharp -> flat
           d.note.alt = d.note.alt === 1 ? -1 : d.note.alt === -1 ? 0 : 1;
           this.preview(d.note);
         } else {
-          this.track.notes.splice(this.track.notes.indexOf(d.note), 1);
+          this.removeNotes([d.note]);
         }
-      } else if (d.mode === 'resize' && !d.moved && !d.created) {
+      } else if (d.mode === 'resize' && !d.moved && !d.created && !d.multi) {
         // clicked the edge without dragging: treat as delete too
-        this.track.notes.splice(this.track.notes.indexOf(d.note), 1);
+        this.removeNotes([d.note]);
       }
       if (d.note.len && d.mode === 'resize') this.lastLen = d.note.len;
-      if (d.moved || d.shift) delete d.note.src;
+      if (d.moved || d.shift) for (const n of d.group) delete n.src;
       this.opts.onCommit();
     };
     cv.addEventListener('pointerup', end);
     cv.addEventListener('pointercancel', end);
+
+    // Alt+wheel: velocity of the note under the mouse (or of the whole selection)
+    let velTimer = null;
+    cv.addEventListener('wheel', e => {
+      if (!e.altKey) return;
+      const { fx, row } = this.cellAt(e);
+      const h = this.hit(fx, row);
+      if (!h) return;
+      e.preventDefault();
+      const targets = this.sel.has(h.note) ? [...this.sel] : [h.note];
+      for (const n of targets) n.vel = Math.round(Math.max(0.1, Math.min(1, (n.vel ?? 0.85) + (e.deltaY < 0 ? 0.05 : -0.05))) * 100) / 100;
+      this.velHint = { note: h.note, until: performance.now() + 900 };
+      this.render();
+      clearTimeout(velTimer);
+      velTimer = setTimeout(() => this.opts.onCommit(), 350);
+    }, { passive: false });
 
     this.keys.addEventListener('pointerdown', e => {
       const rect = this.keys.getBoundingClientRect();
@@ -355,6 +556,10 @@ export class ScaleRoll {
     });
   }
 }
+
+let clipboard = null;   // shared by all rolls, so notes can be pasted into another track
+let activeRoll = null;  // the roll that was last clicked
+export const getActiveRoll = () => activeRoll;
 
 function roundRect(g, x, y, w, h, r) {
   r = Math.max(0, Math.min(r, w / 2, h / 2));

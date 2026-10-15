@@ -69,10 +69,11 @@ function nearestSample(setId, midi) {
 }
 
 // ---------- Mixer ----------
-// Every channel (a track, the chords, the drum group) gets a strip:
-//   input gain -> drive -> low-pass filter -> pump (sidechain-style ducking) -> pan -> master
-//                                                                    \-> reverb send, delay send
-// Drum rows get a small row strip (gain + pan) that feeds the "drums" channel strip.
+// Every channel (a track, the chords, the drum group, each drum sound) gets a strip:
+//   input -> EQ (low shelf, mid peak, high shelf) -> compressor -> drive -> low-pass -> high-pass
+//     -> pump (sidechain-style ducking) -> fader (volume, mute) -> pan -> out   (+ reverb and delay sends after pan)
+// The fader comes after the effects, like on a real desk, so turning a driven channel down really makes it quieter.
+// Channels go out to the master; drum sounds ("row:<id>") go out into the "drums" group strip.
 // The reverb and delay are shared buses, so every send goes into the same room / echo.
 export class Mixer {
   constructor(ctx) {
@@ -91,7 +92,6 @@ export class Mixer {
     this.limiter.connect(this.analyser);
     this.analyser.connect(ctx.destination);
     this.strips = new Map();
-    this.rows = new Map();
 
     // reverb bus
     this.reverb = ctx.createConvolver();
@@ -139,60 +139,108 @@ export class Mixer {
     if (!s) {
       const ctx = this.ctx;
       const gain = ctx.createGain();
+      const eqLow = ctx.createBiquadFilter();
+      eqLow.type = 'lowshelf'; eqLow.frequency.value = 120;
+      const eqMid = ctx.createBiquadFilter();
+      eqMid.type = 'peaking'; eqMid.frequency.value = 1000; eqMid.Q.value = 0.9;
+      const eqHigh = ctx.createBiquadFilter();
+      eqHigh.type = 'highshelf'; eqHigh.frequency.value = 6000;
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = 0; comp.ratio.value = 1; comp.knee.value = 8;
+      comp.attack.value = 0.01; comp.release.value = 0.15;
+      const makeup = ctx.createGain();
       const drive = ctx.createWaveShaper();
       drive.oversample = '2x';
       const filter = ctx.createBiquadFilter();
       filter.type = 'lowpass';
       filter.frequency.value = 20000;
       filter.Q.value = 0.7;
+      const fader = ctx.createGain();
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 10;
+      hp.Q.value = 0.7;
       const pump = ctx.createGain();
       const pan = ctx.createStereoPanner();
       const rev = ctx.createGain(); rev.gain.value = 0;
       const dly = ctx.createGain(); dly.gain.value = 0;
-      gain.connect(drive).connect(filter).connect(pump).connect(pan).connect(this.master);
+      const out = id.startsWith('row:') ? this.strip('drums').gain : this.master;
+      gain.connect(eqLow).connect(eqMid).connect(eqHigh).connect(comp).connect(makeup)
+        .connect(drive).connect(filter).connect(hp).connect(pump).connect(fader).connect(pan).connect(out);
       pan.connect(rev).connect(this.reverbIn);
       pan.connect(dly).connect(this.delayIn);
-      s = { gain, drive, filter, pump, pan, rev, dly, driveAmt: -1, pumpAmt: 0 };
+      s = { gain, eqLow, eqMid, eqHigh, comp, makeup, drive, filter, hp, pump, fader, pan, rev, dly, driveAmt: -1, pumpAmt: 0, audible: true };
       this.strips.set(id, s);
     }
     return s;
   }
 
-  // A drum row: its own volume/pan, then into the drum group's channel strip.
-  rowStrip(id) {
-    let r = this.rows.get(id);
-    if (!r) {
-      const gain = this.ctx.createGain();
-      const pan = this.ctx.createStereoPanner();
-      gain.connect(pan).connect(this.strip('drums').gain);
-      r = { gain, pan };
-      this.rows.set(id, r);
-    }
-    return r;
+  // A drum sound's strip (feeds the drum group strip).
+  rowStrip(id) { return this.strip('row:' + id); }
+
+  // Glide a parameter to `v`, starting now or at `time` (automation is scheduled ahead).
+  set(param, v, time) {
+    if (this.immediate && time == null) param.value = v;
+    else param.setTargetAtTime(v, time ?? this.ctx.currentTime, 0.015);
   }
 
-  set(param, v) {
-    if (this.immediate) param.value = v;
-    else param.setTargetAtTime(v, this.ctx.currentTime, 0.015);
-  }
-
-  setRow(id, volume, audible) { this.set(this.rowStrip(id).gain.gain, audible ? volume : 0); }
-
-  // fx: { drive 0..1, cutoff Hz, reverb 0..1, delay 0..1, pump 0..1 }
+  // fx: { drive 0..1, cutoff Hz (low-pass), hpCut Hz (high-pass), reso 0..1, reverb 0..1, delay 0..1, pump 0..1,
+  //       eqLow/eqMid/eqHigh dB, eqMidFreq Hz, comp 0..1 }
   setStrip(id, volume, panValue, audible, fx) {
     const s = this.strip(id);
-    this.set(s.gain.gain, audible ? volume : 0);
+    s.audible = audible;
+    s.volume = volume;
+    this.set(s.fader.gain, audible ? volume : 0);
     this.set(s.pan.pan, panValue || 0);
     if (!fx) return;
     if (fx.drive !== s.driveAmt) {
       s.driveAmt = fx.drive;
       s.drive.curve = fx.drive > 0 ? driveCurve(fx.drive) : null;
     }
-    this.set(s.filter.frequency, Math.min(fx.cutoff, this.ctx.sampleRate / 2 - 100));
-    this.set(s.rev.gain, fx.reverb);
-    this.set(s.dly.gain, fx.delay);
-    if (s.pumpAmt && !fx.pump) { s.pump.gain.cancelScheduledValues(0); s.pump.gain.value = 1; }
-    s.pumpAmt = fx.pump;
+    for (const k of ['cutoff', 'hpCut', 'reso', 'reverb', 'delay', 'pump', 'eqLow', 'eqMid', 'eqHigh', 'eqMidFreq', 'comp']) this.param(id, k, fx[k] ?? 0);
+  }
+
+  // Drop automation that was scheduled ahead (on stop), so the mixer's own values can take over.
+  cancelScheduled() {
+    const now = this.ctx.currentTime;
+    for (const s of this.strips.values()) {
+      for (const prm of [s.fader.gain, s.eqLow.gain, s.eqMid.gain, s.eqMid.frequency, s.eqHigh.gain, s.comp.threshold, s.comp.ratio,
+        s.makeup.gain, s.filter.frequency, s.filter.Q, s.hp.frequency, s.hp.Q, s.pan.pan, s.rev.gain, s.dly.gain]) prm.cancelScheduledValues(now);
+    }
+  }
+
+  // Set one strip parameter (also used by automation, with a time). Values are in real units.
+  param(id, key, v, time) {
+    const s = id === 'master' ? null : this.strip(id);
+    switch (key) {
+      case 'master': return this.set(this.master.gain, v, time);
+      case 'volume': s.volume = v; return this.set(s.fader.gain, s.audible ? v : 0, time);
+      case 'pan': return this.set(s.pan.pan, v, time);
+      case 'cutoff': return this.set(s.filter.frequency, Math.min(v || 20000, this.ctx.sampleRate / 2 - 100), time);
+      case 'hpCut': return this.set(s.hp.frequency, Math.max(10, v || 10), time);
+      case 'reso': { // resonance on both filters
+        const q = 0.7 + 14 * v * v;
+        this.set(s.filter.Q, q, time);
+        return this.set(s.hp.Q, q, time);
+      }
+      case 'reverb': return this.set(s.rev.gain, v, time);
+      case 'delay': return this.set(s.dly.gain, v, time);
+      case 'eqLow': return this.set(s.eqLow.gain, v, time);
+      case 'eqMid': return this.set(s.eqMid.gain, v, time);
+      case 'eqHigh': return this.set(s.eqHigh.gain, v, time);
+      case 'eqMidFreq': return this.set(s.eqMid.frequency, v || 1000, time);
+      case 'comp': {
+        // one knob: lower threshold + higher ratio, with automatic makeup gain
+        this.set(s.comp.threshold, -36 * v, time);
+        this.set(s.comp.ratio, 1 + 7 * v, time);
+        return this.set(s.makeup.gain, Math.pow(10, (12 * v * v + 6 * v) / 20 * 0.6), time);
+      }
+      case 'pump':
+        if (s.pumpAmt && !v) { s.pump.gain.cancelScheduledValues(0); s.pump.gain.value = 1; }
+        s.pumpAmt = v;
+        return undefined;
+      default: return undefined;
+    }
   }
 
   setBus(bus, stepSeconds) {
@@ -217,15 +265,18 @@ export class Mixer {
   }
 }
 
-// Soft-clipping curve; more drive = more saturation, output level kept roughly constant.
+// Soft-clipping curve: more drive = more saturation (harmonics, grit), at about the same loudness.
+// The curve is matched at a typical level (0.3): quieter parts get a little louder, peaks get squashed,
+// instead of everything being pushed to full scale.
 function driveCurve(amount) {
   const k = 1 + amount * 30;
+  const ref = 0.3;
+  const g = ref / Math.tanh(k * ref);
   const n = 1024;
   const curve = new Float32Array(n);
-  const norm = Math.tanh(k);
   for (let i = 0; i < n; i++) {
     const x = (i / (n - 1)) * 2 - 1;
-    curve[i] = Math.tanh(k * x) / norm;
+    curve[i] = Math.tanh(k * x) * g;
   }
   return curve;
 }
@@ -256,11 +307,22 @@ export const DEFAULT_PATCH = {
   wave2: 'none',        // optional second oscillator
   mix2: 0.5,
   detune: 8,            // cents between oscillators (and unison spread)
+  unison: 1,            // copies of osc 1 spread across the detune amount (7 saws = the trance "supersaw")
   octave2: 0,           // octave offset of osc 2
   attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.25,
   cutoff: 8000, resonance: 1, filterEnv: 0, // filterEnv: extra Hz added at attack peak
+  filterSlope: 12,      // 12 or 24 dB/octave
+  filterDecay: 0,       // how fast the filter envelope falls (0 = same as Decay)
+  velToFilter: 0,       // 0..1: how much harder notes open the filter (accent)
+  mono: false,          // one note at a time; overlapping notes slide (glide) instead of retriggering
+  fm: 0,                // FM: a hidden sine wobbles the pitch of wave 1 this much (0 = off). Metallic, glassy, "zappy"
+  fmRatio: 2,           // the modulator's pitch, relative to the note (whole numbers sound tuned, others clangy)
+  fmDecay: 0,           // how fast the FM amount falls after the attack (0 = it stays). Short = a "zap"
+  vibrato: 0,           // pitch wobble depth in cents (0 = off): strings, voices, flutes
+  vibratoRate: 5,       // wobbles per second
+  vibratoDelay: 0.3,    // seconds before the vibrato fades in, like a player who starts a note straight
   pitchDrop: 0, pitchTime: 0.05,            // semitones the note falls from at start (808 style)
-  glide: 0,
+  glide: 0.06,          // slide time for mono patches
   volume: 0.7,
 };
 
@@ -299,17 +361,51 @@ function playSampled(ctx, dest, inst, midi, time, dur, vel) {
   };
 }
 
+// Mono synths remember their sounding voice per output, so a note that starts while the previous one
+// is still held slides into it instead of starting over (the TB-303 "slide").
+const monoVoices = new WeakMap();
+
 function playSynth(ctx, dest, p, midi, time, dur, vel) {
   const freq = midiToFreq(midi);
+  const a = Math.max(0.002, p.attack), d = Math.max(0.005, p.decay), r = Math.max(0.01, p.release);
+  const end = Math.max(time + Math.max(dur, 0.01), time + a + 0.001); // release starts here
+
+  if (p.mono) {
+    const last = monoVoices.get(dest);
+    if (last && last.ctx === ctx && time >= last.start && time < last.end - 0.002) {
+      const glide = Math.max(0.005, p.glide || 0.06);
+      for (const { o, mult } of last.oscs) if (mult != null) o.frequency.setTargetAtTime(freq * mult, time, glide / 3);
+      // keep the gate open until the new note ends (the old release is cancelled)
+      last.gain.cancelScheduledValues(time);
+      last.gain.setTargetAtTime(0, end, r / 4);
+      for (const { o } of last.oscs) { try { o.stop(end + r + 0.1); } catch { /* already stopped */ } }
+      last.end = end;
+      const g = last.gain;
+      return (at = ctx.currentTime) => { holdAt(g, at); g.setTargetAtTime(0, at, r / 4); };
+    }
+  }
+
   const out = ctx.createGain();
-  const filter = ctx.createBiquadFilter();
-  filter.type = 'lowpass';
-  filter.Q.value = p.resonance;
+  // Filter: 12 dB (one resonant low-pass) or 24 dB (a clean low-pass into a resonant one: squelchier, more 303)
   const nyq = ctx.sampleRate / 2 - 100;
   const cut = Math.min(p.cutoff, nyq);
-  filter.frequency.setValueAtTime(Math.min(cut + p.filterEnv, nyq), time);
-  if (p.filterEnv) filter.frequency.setTargetAtTime(cut, time + p.attack, Math.max(0.01, p.decay / 3));
-  filter.connect(out);
+  // Velocity can push the filter envelope (accents open the filter further, like a 303's accent)
+  const envAmt = Math.max(0, p.filterEnv * (1 + (p.velToFilter || 0) * (vel - 0.75) * 2.5));
+  const fDecay = Math.max(0.01, p.filterDecay || p.decay);
+  const filters = [];
+  const mkFilter = q => {
+    const f = ctx.createBiquadFilter();
+    f.type = 'lowpass';
+    f.Q.value = q;
+    f.frequency.setValueAtTime(Math.min(cut + envAmt, nyq), time);
+    if (envAmt) f.frequency.setTargetAtTime(cut, time + a, fDecay / 3);
+    filters.push(f);
+    return f;
+  };
+  if (p.filterSlope === 24) mkFilter(0.707).connect(mkFilter(p.resonance));
+  else mkFilter(p.resonance);
+  const filterIn = filters[0];
+  filters[filters.length - 1].connect(out);
   out.connect(dest);
 
   const oscs = [];
@@ -317,7 +413,8 @@ function playSynth(ctx, dest, p, midi, time, dur, vel) {
     if (type === 'none' || level <= 0) return;
     const o = ctx.createOscillator();
     o.type = type;
-    const f = freq * Math.pow(2, octave);
+    const mult = Math.pow(2, octave);
+    const f = freq * mult;
     if (p.pitchDrop) {
       o.frequency.setValueAtTime(f * Math.pow(2, p.pitchDrop / 12), time);
       o.frequency.exponentialRampToValueAtTime(f, time + Math.max(0.005, p.pitchTime));
@@ -328,32 +425,68 @@ function playSynth(ctx, dest, p, midi, time, dur, vel) {
     const g = ctx.createGain();
     g.gain.value = level;
     o.connect(g);
-    g.connect(filter);
-    oscs.push(o);
+    g.connect(filterIn);
+    oscs.push({ o, mult });
   };
   const mix2 = p.wave2 === 'none' ? 0 : p.mix2;
-  addOsc(p.wave, 1 - mix2 * 0.5, -p.detune / 2, 0);
+  const voices = Math.max(1, Math.min(7, Math.round(p.unison || 1)));
+  if (voices === 1) addOsc(p.wave, 1 - mix2 * 0.5, -p.detune / 2, 0);
+  else {
+    // spread the copies evenly from -detune to +detune cents; keep the overall level about the same
+    for (let v = 0; v < voices; v++) addOsc(p.wave, (1 - mix2 * 0.5) * 1.25 / Math.sqrt(voices), (v / (voices - 1) * 2 - 1) * p.detune, 0);
+  }
   addOsc(p.wave2, mix2, p.detune / 2, p.octave2 || 0);
+
+  // FM: a sine modulator bends the frequency of wave 1's oscillators. Its depth follows its own envelope.
+  if (p.fm > 0) {
+    const ratio = p.fmRatio || 1;
+    const mod = ctx.createOscillator();
+    mod.type = 'sine';
+    mod.frequency.setValueAtTime(freq * ratio, time);
+    const depth = ctx.createGain();
+    const dev = p.fm * freq * ratio; // frequency deviation in Hz (index x modulator frequency)
+    depth.gain.setValueAtTime(dev, time);
+    if (p.fmDecay) depth.gain.setTargetAtTime(dev * 0.12, time + 0.002, p.fmDecay / 3);
+    mod.connect(depth);
+    const carriers = oscs.slice(0, voices);
+    for (const { o } of carriers) depth.connect(o.frequency);
+    oscs.push({ o: mod, mult: ratio });
+  }
+
+  // Vibrato: a slow sine bends every oscillator's pitch (in cents), fading in after vibratoDelay.
+  const extras = [];
+  if (p.vibrato > 0) {
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = p.vibratoRate || 5;
+    const depth = ctx.createGain();
+    const at = time + Math.max(0, p.vibratoDelay ?? 0.3);
+    depth.gain.setValueAtTime(0, time);
+    depth.gain.setValueAtTime(0, at);
+    depth.gain.linearRampToValueAtTime(p.vibrato, at + 0.4);
+    lfo.connect(depth);
+    for (const { o } of oscs) depth.connect(o.detune);
+    extras.push(lfo);
+  }
 
   // ADSR on the output gain. Square and saw waves are loud, so tame them a little.
   const loud = { sine: 1, triangle: 0.9, square: 0.45, sawtooth: 0.5 }[p.wave] ?? 0.6;
   const peak = vel * p.volume * loud;
-  const a = Math.max(0.002, p.attack), d = Math.max(0.005, p.decay), r = Math.max(0.01, p.release);
   const sus = peak * p.sustain;
   const g = out.gain;
   g.setValueAtTime(0, time);
   g.linearRampToValueAtTime(peak, time + a);
   g.setTargetAtTime(sus, time + a, d / 3);
-  // Release starts at note end (never before the attack has finished).
-  const end = Math.max(time + Math.max(dur, 0.01), time + a + 0.001);
   g.setTargetAtTime(0, end, r / 4);
   const stopAt = end + r + 0.1;
-  oscs.forEach(o => { o.start(time); o.stop(stopAt); });
-  oscs[0]?.addEventListener('ended', () => { try { out.disconnect(); } catch { /* ignore */ } });
+  oscs.forEach(({ o }) => { o.start(time); o.stop(stopAt); });
+  extras.forEach(o => { o.start(time); o.stop(stopAt); });
+  oscs[0]?.o.addEventListener('ended', () => { try { out.disconnect(); } catch { /* ignore */ } });
+  if (p.mono) monoVoices.set(dest, { ctx, start: time, end, oscs: [...oscs, ...extras.map(o => ({ o, mult: null }))], gain: g });
   return (at = ctx.currentTime) => {
     holdAt(g, at);
     g.setTargetAtTime(0, at, r / 4);
-    oscs.forEach(o => { try { o.stop(at + r + 0.1); } catch { /* ignore */ } });
+    [...oscs.map(x => x.o), ...extras].forEach(o => { try { o.stop(at + r + 0.1); } catch { /* ignore */ } });
   };
 }
 

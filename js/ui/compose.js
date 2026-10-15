@@ -2,14 +2,20 @@
 // Every lane shares the same horizontal step grid so everything lines up.
 
 import { store, commit, touch, loopSteps, newTrack, TRACK_COLORS, uid, saveSampleData, STEPS_PER_BAR,
-  sections, sectionIndexAt, keyAt, addKeyChange, removeKeyChange, setTrackMode } from '../state.js';
+  sections, sectionIndexAt, keyAt, addKeyChange, removeKeyChange, setTrackMode, deleteTrack, deleteDrumRow, defaultFx, withPatterns } from '../state.js';
 import { romanNumeral, chordName, chordFunction, scaleSteps, harmonyScaleId, CHORD_TYPES, FUNCTION_INFO, SCALES, keyName, mod } from '../theory.js';
 import { audio, playBuffer, decodeUserSample } from '../audio.js';
-import { ScaleRoll, KEYS_W } from './scaleroll.js';
-import { ui, h, previewDeg, previewTrackMidi, previewChord, toast, patchOf } from './common.js';
-import { play, stop, transport, syncMixer } from '../sequencer.js';
+import { ScaleRoll, KEYS_W, getActiveRoll } from './scaleroll.js';
+import { AutoLane, addLane, targetSelect } from './autolane.js';
+import { GENRES } from '../guides.js';
+import { ui, h, previewDeg, previewTrackMidi, previewChord, toast, patchOf, popupMenu } from './common.js';
+import { transport, syncMixer } from '../sequencer.js';
 
 let rolls = [];
+let playFrom = () => {};
+let onSelectTrack = () => {};
+
+export function initCompose(opts) { playFrom = opts.playFrom; onSelectTrack = opts.onSelectTrack || onSelectTrack; }
 let drumCols = [];     // step index -> [buttons]
 let lastLitCol = -1;
 
@@ -26,16 +32,82 @@ export function renderCompose() {
   drumCols = [];
   lastLitCol = -1;
 
+  const show = visibleLanes(p, L);
   lanes.append(rulerLane(L, cw));
   lanes.append(keyLane(p, L, cw));
-  lanes.append(sectionTitle('Chords', 'The harmony. Pick chords from the sidebar, or click a slot and then click a chord.'));
-  lanes.append(chordLane(p, L, cw));
-  lanes.append(sectionTitle('Melody & Bass', 'Scale tracks: rows are scale degrees (1 is home). Piano tracks: rows are the 12 notes. Tinted rows are notes of the chord playing above them.'));
-  for (const t of p.tracks) lanes.append(trackLane(t, L));
-  lanes.append(sectionTitle('Drums & Samples', 'Click steps to toggle. Shift or right-click for a loud accent. Drop audio files here to add sample rows.', drumSectionDrop()));
-  for (const r of p.drums.rows) lanes.append(drumLane(r, L, cw));
-  lanes.append(addSampleLane());
+  if (show.hiddenTracks || show.hiddenRows || !show.chords) lanes.append(focusNote(show));
+  if (show.chords) {
+    lanes.append(sectionTitle('Chords', 'The harmony. Pick chords from the sidebar, or click a slot and then click a chord.'));
+    lanes.append(chordLane(p, L, cw));
+  }
+  if (show.tracks.length) lanes.append(sectionTitle('Melody & Bass', 'Scale tracks: rows are scale degrees (1 is home). Piano tracks: rows are the 12 notes. Tinted rows are notes of the chord playing above them.'));
+  for (const t of show.tracks) lanes.append(trackLane(t, L));
+  if (show.rows.length) lanes.append(sectionTitle('Drums & Samples', 'Click steps to toggle, or drag across to paint. Shift or right-click for a loud accent. ⋯ on a row fills it with a rhythm or repeats it. Drop audio files here to add sample rows.', lane => {
+    drumSectionDrop()(lane);
+    lane.querySelector('.lane-body').append(h('div', { class: 'drum-tools' },
+      h('span', { class: 'hint' }, 'All rows:'),
+      h('button', { class: 'btn small', title: 'Copy bar 1 of every drum row across the whole pattern', onclick: () => repeatAllRows(1) }, 'Repeat bar 1'),
+      L >= 32 ? h('button', { class: 'btn small', title: 'Copy bars 1–2 of every drum row across the whole pattern', onclick: () => repeatAllRows(2) }, 'Repeat bars 1–2') : null,
+      L >= 64 ? h('button', { class: 'btn small', title: 'Copy bars 1–4 of every drum row across the whole pattern', onclick: () => repeatAllRows(4) }, 'Repeat bars 1–4') : null,
+      h('button', { class: 'btn small', title: 'Remove every drum hit in this pattern', onclick: () => { if (confirm('Clear all drums in this pattern?')) { store.project.drums.rows.forEach(r => { r.steps = []; }); commit('drums'); } } }, 'Clear')));
+  }));
+  for (const r of show.rows) lanes.append(drumLane(r, L, cw));
+  if (show.rows.length) lanes.append(addSampleLane());
+  lanes.append(sectionTitle('Automation', 'Moves a mixer setting over the pattern, every time the pattern plays (also inside the song). Click to add points, drag them, right-click deletes, Shift+drag draws. The dashed line is the mixer’s own setting.'));
+  for (const lane of p.patAuto) lanes.append(autoLaneRow(lane, L));
+  lanes.append(h('div', { class: 'lane' },
+    h('div', { class: 'lane-head drum-head' }, targetSelect('', v => addLane('pattern', v), '+ Automate…')),
+    h('div', { class: 'lane-body' })));
   rolls.forEach(r => r.render());
+}
+
+// ---------- Showing only the lanes a pattern uses ----------
+// With "Hide unused lanes" on: drum patterns show only drum rows that have hits, melodic patterns only
+// the tracks with notes (plus the selected track), and an empty pattern shows what it is meant for
+// (in a guide project the guide knows; otherwise the selected track and every drum row).
+function patternKind(p, anyNotes, anyDrums) {
+  if (anyNotes && anyDrums) return 'mixed';
+  if (anyDrums) return 'drums';
+  if (anyNotes) return 'notes';
+  const role = p.guide && Object.entries(p.guide.roles?.pats || {}).find(([, id]) => id === p.currentPattern)?.[0];
+  const steps = role ? GENRES[p.guide.genre]?.steps.filter(s => s.where?.role === role) || [] : [];
+  if (steps.some(s => s.where.scroll === 'drums')) return 'drums';
+  if (steps.some(s => s.where.track)) return 'notes';
+  if (steps.some(s => s.where.scroll === 'chords')) return 'chords';
+  return 'empty';
+}
+
+function visibleLanes(p, L) {
+  const trackHas = t => t.notes.some(n => n.step < L);
+  const rowHas = r => (r.steps || []).some((v, i) => v && i < L);
+  if (!ui.focusLanes || ui.showAllLanes) return { tracks: p.tracks, rows: p.drums.rows, chords: true, hiddenTracks: 0, hiddenRows: 0 };
+  const kind = patternKind(p, p.tracks.some(trackHas), p.drums.rows.some(rowHas));
+  const tracks = kind === 'drums' || kind === 'chords' ? [] : p.tracks.filter(t => trackHas(t) || t.id === ui.selectedTrackId);
+  const used = p.drums.rows.filter(rowHas);
+  // a drum pattern with no hits yet shows every row, so there is something to click
+  const rows = kind === 'notes' || kind === 'chords' ? [] : used.length ? used : p.drums.rows;
+  return { tracks, rows, chords: kind !== 'drums', hiddenTracks: p.tracks.length - tracks.length, hiddenRows: p.drums.rows.length - rows.length };
+}
+
+function focusNote(show) {
+  const parts = [];
+  if (show.hiddenTracks) parts.push(`${show.hiddenTracks} track${show.hiddenTracks > 1 ? 's' : ''}`);
+  if (show.hiddenRows) parts.push(`${show.hiddenRows} drum row${show.hiddenRows > 1 ? 's' : ''}`);
+  if (!show.chords) parts.push('the chord lane');
+  return h('div', { class: 'lane focus-note' },
+    h('div', { class: 'lane-head' }, 'Focused'),
+    h('div', { class: 'lane-body' },
+      h('span', { class: 'hint' }, `Showing what this pattern uses. Hidden: ${parts.join(', ')}.`),
+      h('button', { class: 'btn small', onclick: () => { ui.showAllLanes = true; renderCompose(); } }, 'Show everything')));
+}
+
+// Keyboard shortcuts for the note editors (select all, copy/paste, delete, arrows...). Returns true when used.
+export function composeKey(e) {
+  const live = rolls.filter(r => r instanceof ScaleRoll);
+  const active = getActiveRoll();
+  const roll = (live.includes(active) && active.track.id === ui.selectedTrackId ? active : null)
+    || live.find(r => r.track.id === ui.selectedTrackId);
+  return roll ? !!roll.key(e) : false;
 }
 
 // Only redraw the canvases (cheap), e.g. after a note edit or chord change.
@@ -70,13 +142,7 @@ function rulerLane(L, cw) {
     }
   }
   c.title = 'Click to play from here';
-  c.addEventListener('click', e => {
-    const step = Math.floor((e.offsetX / cw) / 4) * 4;
-    if (transport.playing) stop();
-    play(step);
-    document.getElementById('btn-play').classList.add('playing');
-    document.getElementById('btn-play').textContent = '■';
-  });
+  c.addEventListener('click', e => playFrom(Math.floor((e.offsetX / cw) / 4) * 4));
   return h('div', { class: 'lane ruler' },
     h('div', { class: 'lane-head' }, 'Bar'),
     h('div', { class: 'lane-body' }, c));
@@ -186,7 +252,7 @@ function chordLane(p, L, cw) {
     h('div', { class: 'head-row' },
       patchSelect(c.patch, v => { c.patch = v; commit('chords'); }),
       h('select', { title: 'How the chord is played', onchange: e => { c.style = e.target.value; commit('chords'); } },
-        ...[['block', 'Block'], ['strum', 'Strum'], ['stabs', 'Off-beat stabs'], ['arp-up', 'Arp ↑'], ['arp-down', 'Arp ↓'], ['arp-updown', 'Arp ↕']]
+        ...[['block', 'Block'], ['strum', 'Strum'], ['stabs', 'Off-beat stabs'], ['gate', 'Gated 16ths'], ['arp-up', 'Arp ↑'], ['arp-down', 'Arp ↓'], ['arp-updown', 'Arp ↕']]
           .map(([v, t]) => h('option', { value: v, selected: c.style === v }, t)))),
     h('div', { class: 'head-row' },
       h('select', { title: 'How long each chord lasts', onchange: e => setSlotSteps(Number(e.target.value)) },
@@ -194,8 +260,31 @@ function chordLane(p, L, cw) {
       octaveCtl(c, 'chords'),
       h('label', { title: 'Pick chord shapes that move as little as possible (smooth!)' },
         h('input', { type: 'checkbox', checked: c.voiceLead, onchange: e => { c.voiceLead = e.target.checked; commit('chords'); } }), 'smooth')),
-    h('div', { class: 'head-row' }, volCtl(c))));
-  return h('div', { class: 'lane chord-lane' }, head, body);
+    h('div', { class: 'head-row' }, volCtl(c)),
+    h('div', { class: 'head-row' },
+      h('label', { title: 'Guide only: these chords stay silent in this pattern, but still tint the rolls and feed the suggestions. Use it when another pattern plays the chords.' },
+        h('input', { type: 'checkbox', checked: !!p.chordsGuide, onchange: e => { p.chordsGuide = e.target.checked; commit('chords'); } }), 'guide only'),
+      h('button', { class: 'btn', title: 'Copy these chords into every other pattern as a silent guide, so basslines and melodies there can follow them', onclick: copyChordsToAll }, '→ all patterns'))));
+  return h('div', { class: 'lane chord-lane' + (p.chordsGuide ? ' chords-guide-only' : '') }, head, body);
+}
+
+function copyChordsToAll() {
+  const p = store.project;
+  if (p.patterns.length < 2) { toast('There is only one pattern.'); return; }
+  withPatterns(q => {
+    const src = q.patterns.find(x => x.id === q.currentPattern);
+    for (const pat of q.patterns) {
+      if (pat === src) continue;
+      const n = Math.ceil(pat.bars * STEPS_PER_BAR / src.slotSteps);
+      const len = Math.max(1, Math.ceil(src.bars * STEPS_PER_BAR / src.slotSteps));
+      pat.chordSlots = Array.from({ length: n }, (_, i) => (src.chordSlots[i % len] ? { ...src.chordSlots[i % len] } : null));
+      pat.slotSteps = src.slotSteps;
+      pat.chordsGuide = true;
+      pat.root = src.root; pat.scale = src.scale;
+    }
+  });
+  commit('all');
+  toast(`Chords copied to ${p.patterns.length - 1} other pattern${p.patterns.length > 2 ? 's' : ''} as a silent guide (their key now matches too).`, 4000);
 }
 
 function setSlotSteps(v) {
@@ -238,10 +327,18 @@ function volCtl(obj, key = 'volume') {
 }
 
 function octaveCtl(obj, what) {
+  // The label is updated here too: a 'notes' change only redraws the rolls, not the lane headers.
+  const label = h('span', { style: { fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }, title: 'Octave' }, `Oct ${obj.octave}`);
+  const set = v => {
+    if (v === obj.octave) return;
+    obj.octave = v;
+    label.textContent = `Oct ${v}`;
+    commit(what);
+  };
   return [
-    h('button', { class: 'btn', title: 'Octave down', onclick: () => { obj.octave = Math.max(0, obj.octave - 1); commit(what); } }, '−'),
-    h('span', { style: { fontSize: '11px', color: 'var(--muted)', whiteSpace: 'nowrap' }, title: 'Octave' }, `Oct ${obj.octave}`),
-    h('button', { class: 'btn', title: 'Octave up', onclick: () => { obj.octave = Math.min(7, obj.octave + 1); commit(what); } }, '+'),
+    h('button', { class: 'btn', title: 'Octave down', onclick: () => set(Math.max(0, obj.octave - 1)) }, '−'),
+    label,
+    h('button', { class: 'btn', title: 'Octave up', onclick: () => set(Math.min(7, obj.octave + 1)) }, '+'),
   ];
 }
 
@@ -280,10 +377,8 @@ function trackLane(t, L) {
       h('button', { class: 'btn', title: 'Remove all notes', onclick: () => { if (t.notes.length && confirm(`Clear all notes in “${t.name}”?`)) { t.notes = []; commit('notes'); } } }, 'Clear'),
       h('button', { class: 'btn', title: 'Copy the first bar(s) across the loop', onclick: () => fillFromStart(t) }, 'Repeat'),
       h('button', { class: 'btn', title: 'Delete this track', onclick: () => {
-        if (!confirm(`Delete track “${t.name}”?`)) return;
-        const p = store.project;
-        p.tracks.splice(p.tracks.indexOf(t), 1);
-        commit('all');
+        if (!confirm(`Delete track “${t.name}”? Its notes go from every pattern.`)) return;
+        deleteTrack(t);
       } }, '✕')));
   const head = h('div', { class: 'lane-head' }, controls, roll.keys);
   head.addEventListener('pointerdown', () => selectTrack(t.id));
@@ -315,9 +410,13 @@ function fillFromStart(t) {
 }
 
 export function selectTrack(id) {
+  ui.ctlChannel = id; // a MIDI keyboard follows the clicked track
   if (ui.selectedTrackId === id) return;
   ui.selectedTrackId = id;
+  // a hidden (unused) track gets shown once it's selected
+  if (ui.focusLanes && !document.querySelector(`.track-lane[data-track="${id}"]`)) renderCompose();
   document.querySelectorAll('.track-lane').forEach(l => l.classList.toggle('selected', l.dataset.track === id));
+  onSelectTrack(id);
 }
 
 export function addTrack() {
@@ -329,9 +428,35 @@ export function addTrack() {
   commit('all');
 }
 
+// ---------- Automation lanes ----------
+export function channelColor(p, ch) {
+  if (ch === 'chords') return '#ffd43b';
+  if (ch === 'master') return '#e9ecf5';
+  if (ch === 'drums') return '#ff6b6b';
+  if (ch.startsWith('row:')) return DRUM_COLORS[p.drums.rows.find(r => r.id === ch.slice(4))?.kind] || '#e9ecf5';
+  return p.tracks.find(t => t.id === ch)?.color || '#e9ecf5';
+}
+
+function autoLaneRow(lane, L) {
+  const p = store.project;
+  const al = new AutoLane(lane, { steps: () => L, px: () => ui.cellW, snap: () => 1,
+    color: channelColor(p, lane.target.split('|')[0]), onCommit: () => commit('auto') });
+  rolls.push(al);
+  const head = h('div', { class: 'lane-head drum-head auto-head' },
+    h('span', { class: 'color-dot', style: { background: channelColor(p, lane.target.split('|')[0]) } }),
+    targetSelect(lane.target, v => {
+      if (p.patAuto.some(l => l !== lane && l.target === v)) { toast('That setting already has a lane.'); renderCompose(); return; }
+      lane.target = v;
+      commit('all');
+    }),
+    h('button', { class: 'btn', title: 'Clear all points', onclick: () => { lane.points = []; commit('all'); } }, 'Clear'),
+    h('button', { class: 'btn', title: 'Remove this lane', onclick: () => { p.patAuto.splice(p.patAuto.indexOf(lane), 1); commit('all'); } }, '✕'));
+  return h('div', { class: 'lane auto-lane' }, head, h('div', { class: 'lane-body' }, al.canvas));
+}
+
 // ---------- Drum lanes ----------
 const DRUM_COLORS = { kick: '#ff6b6b', snare: '#ffa94d', clap: '#ffd43b', rim: '#fcc419', chat: '#69db7c', ohat: '#38d9a9',
-  ltom: '#4dabf7', mtom: '#748ffc', htom: '#9775fa', cowbell: '#da77f2', cymbal: '#f783ac', shaker: '#63e6be', sample: '#e9ecf5' };
+  ltom: '#4dabf7', mtom: '#748ffc', htom: '#9775fa', cowbell: '#da77f2', cymbal: '#f783ac', shaker: '#63e6be', ride: '#e599f7', riser: '#99e9f2', impact: '#ffc9c9', downer: '#a5d8ff', sample: '#e9ecf5' };
 
 let painting = null; // value being painted while the mouse is held
 
@@ -356,6 +481,7 @@ function drumLane(r, L, cw) {
     });
     b.addEventListener('pointerenter', () => { if (painting != null && (r.steps[s] || 0) !== painting) set(painting); });
     b.addEventListener('contextmenu', e => e.preventDefault());
+    b.__row = r;
     (drumCols[s] ||= []).push(b);
     body.append(b);
   }
@@ -369,10 +495,9 @@ function drumLane(r, L, cw) {
     h('input', { type: 'range', min: -12, max: 12, step: 1, value: r.pitch, title: 'Pitch (semitones)',
       oninput: e => { r.pitch = Number(e.target.value); auditionRow(r, 0.8); }, onchange: () => commit('drums') }),
     ...muteSolo(r),
-    r.kind === 'sample' ? h('button', { class: 'btn', title: 'Remove this sample row', onclick: () => {
-      const rows = store.project.drums.rows;
-      rows.splice(rows.indexOf(r), 1);
-      commit('all');
+    h('button', { class: 'btn', title: 'Fill this row with a rhythm, repeat it, shift it', onclick: e => drumRowMenu(e, r) }, '⋯'),
+    r.kind === 'sample' ? h('button', { class: 'btn', title: 'Remove this sample row (from every pattern)', onclick: () => {
+      if (confirm(`Remove sample row “${r.name}”?`)) deleteDrumRow(r);
     } }, '✕') : null);
   const lane = h('div', { class: 'lane drum-lane' }, head, body);
   if (r.kind === 'sample') attachDrop(lane, file => loadSampleInto(r, file));
@@ -382,6 +507,55 @@ function drumLane(r, L, cw) {
 window.addEventListener('pointerup', () => {
   if (painting != null) { painting = null; commit('drums'); }
 });
+
+// ---------- Drum fills and repeats ----------
+// Rhythms by step within a bar (16 steps): which steps get a hit, and which of those are accents.
+const RHYTHMS = [
+  ['Every beat (quarter notes)', s => s % 4 === 0],
+  ['Every 8th', s => s % 2 === 0],
+  ['Every 16th', () => true, s => s % 4 === 0],
+  ['Off-beats (between the beats)', s => s % 4 === 2],
+  ['Beats 2 and 4 (backbeat)', s => s % 16 === 4 || s % 16 === 12],
+  ['16ths without the beat (x.xx)', s => s % 4 !== 1],
+  ['Dotted 8ths (every 3 steps)', s => s % 16 % 3 === 0 && s % 16 < 15],
+];
+
+function fillRow(r, test, accent = null) {
+  const L = loopSteps();
+  r.steps = Array.from({ length: L }, (_, s) => (test(s) ? (accent?.(s) ? 2 : 1) : 0));
+}
+
+// Copy the first `bars` bars of a row across the whole pattern.
+function repeatRow(r, bars) {
+  const L = loopSteps();
+  const n = bars * STEPS_PER_BAR;
+  const src = Array.from({ length: n }, (_, i) => r.steps[i] || 0);
+  r.steps = Array.from({ length: L }, (_, s) => src[s % n]);
+}
+
+function repeatAllRows(bars) {
+  if (loopSteps() <= bars * STEPS_PER_BAR) { toast('The pattern is not longer than that. Make it longer first (Bars).'); return; }
+  store.project.drums.rows.forEach(r => repeatRow(r, bars));
+  commit('drums');
+  toast(`Bar${bars > 1 ? 's 1–' + bars : ' 1'} repeated across the pattern for every drum row. Ctrl+Z undoes it.`);
+}
+
+function drumRowMenu(e, r) {
+  const L = loopSteps();
+  const apply = (fn, msg) => () => { fn(); commit('drums'); auditionRow(r, 0.8); if (msg) toast(msg); };
+  const rotate = d => apply(() => { const old = Array.from({ length: L }, (_, i) => r.steps[i] || 0); r.steps = old.map((_, s) => old[(s - d + L) % L]); });
+  popupMenu(e, [
+    ...RHYTHMS.map(([label, test, acc]) => [label, apply(() => fillRow(r, test, acc), `${r.name}: ${label.toLowerCase()} across the pattern.`)]),
+    '-',
+    L > 16 ? ['Repeat bar 1 across the pattern', apply(() => repeatRow(r, 1))] : null,
+    L > 32 ? ['Repeat bars 1–2 across the pattern', apply(() => repeatRow(r, 2))] : null,
+    L > 64 ? ['Repeat bars 1–4 across the pattern', apply(() => repeatRow(r, 4))] : null,
+    ['Shift right one step', rotate(1)],
+    ['Shift left one step', rotate(-1)],
+    '-',
+    ['Clear this row', apply(() => { r.steps = []; })],
+  ]);
+}
 
 function auditionRow(r, vel) {
   if (!audio.ctx || transport.playing) return;
@@ -418,7 +592,7 @@ function attachDrop(el, onFile) {
 }
 
 async function addSampleRow(file) {
-  const r = { id: uid('d'), name: file.name.replace(/\.[^.]+$/, ''), kind: 'sample', sampleId: uid('s'), vol: 0.9, pitch: 0, mute: false, solo: false, steps: [] };
+  const r = { id: uid('d'), name: file.name.replace(/\.[^.]+$/, ''), kind: 'sample', sampleId: uid('s'), vol: 0.9, pan: 0, pitch: 0, mute: false, solo: false, steps: [], fx: defaultFx() };
   if (await loadSampleInto(r, file, false)) {
     store.project.drums.rows.push(r);
     commit('all');
@@ -462,4 +636,12 @@ export function drawPlayhead(step) {
 }
 
 export function resetDrumCols() { drumCols = []; lastLitCol = -1; }
+
+// Refresh the drum grid from the data (after steps were changed from somewhere else, e.g. a MIDI controller).
+export function syncDrumCells() {
+  drumCols.forEach((col, s) => col.forEach(b => {
+    const v = b.__row.steps[s] || 0;
+    b.className = `step${Math.floor(s / 4) % 2 ? ' alt' : ''}${v ? ' v' + v : ''}${s === lastLitCol ? ' now' : ''}`;
+  }));
+}
 export { slotCount, KEYS_W, CHORD_TYPES, mod, patchOf };

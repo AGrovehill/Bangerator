@@ -208,18 +208,16 @@ function triadQuality(suffix) {
 
 const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
 
-// Roman numeral like "♭VII" or "ii°" for a chord on `deg` in scale `steps`.
+// Roman numeral like "VI" or "ii°" for a chord on `deg` in scale `steps`.
+// Numbered by the degree of the key's own scale: every chord here is built from that scale, so none of
+// them gets a ♭ or ♯ (in A minor, F is VI, not ♭VI).
 export function romanNumeral(steps, deg, type = 'triad') {
   const semis = chordSemis(steps, deg, type);
   const { quality, suffix } = chordQuality(semis, type);
   const n = steps.length;
   const d = mod(deg, n);
   let base = ROMAN[d] || String(d + 1);
-  let prefix = '';
-  if (n === 7) {
-    const diff = mod(steps[d] - MAJOR[d] + 6, 12) - 6;
-    prefix = diff < 0 ? '♭'.repeat(-diff) : '♯'.repeat(diff);
-  }
+  const prefix = '';
   const lower = quality === 'minor' || quality === 'dim';
   if (lower) base = base.toLowerCase();
   let suf = suffix;
@@ -293,7 +291,7 @@ export const PROGRESSIONS = [
   { name: 'Circle Walk', degs: [5, 1, 4, 0], family: 'major', help: 'vi–ii–V–I. Each chord falls a 5th: pure gravity.' },
   { name: 'Royal Road', degs: [3, 4, 2, 5], family: 'major', help: 'IV–V–iii–vi. Emotional J-pop/anime staple.' },
   { name: 'Canon', degs: [0, 4, 5, 2, 3, 0, 3, 4], family: 'major', help: 'I–V–vi–iii–IV–I–IV–V. Pachelbel’s famous loop (8 slots).' },
-  { name: 'Mixolydian Rock', degs: [0, 6, 3, 0], family: 'major', help: 'I–♭VII–IV–I. Best in Mixolydian. Stadium rock.' },
+  { name: 'Mixolydian Rock', degs: [0, 6, 3, 0], family: 'major', help: 'I–VII–IV–I. Best in Mixolydian. Stadium rock.' },
   { name: 'Lydian Float', degs: [0, 1, 0, 1], family: 'major', help: 'I–II. Best in Lydian. Dreamy film-score magic.' },
   { name: 'Epic Minor', degs: [0, 5, 2, 6], family: 'minor', help: 'i–VI–III–VII. Epic, cinematic, EDM drops.' },
   { name: 'Minor Loop', degs: [0, 5, 6, 0], family: 'minor', help: 'i–VI–VII–i. Rising hope, then back to the dark.' },
@@ -301,7 +299,7 @@ export const PROGRESSIONS = [
   { name: 'Minor Cadence', degs: [0, 3, 4, 0], family: 'minor', help: 'i–iv–v–i. Use Harmonic Minor for a strong V.' },
   { name: 'Minor Circle', degs: [0, 3, 6, 2], family: 'minor', help: 'i–iv–VII–III. Moody and smooth. Lo-fi and trap.' },
   { name: 'Dorian Groove', degs: [0, 3, 0, 3], family: 'minor', help: 'i–IV. Best in Dorian. Funky minor vamp.' },
-  { name: 'Phrygian Menace', degs: [0, 1, 0, 1], family: 'minor', help: 'i–♭II. Best in Phrygian. Dark, heavy, cinematic.' },
+  { name: 'Phrygian Menace', degs: [0, 1, 0, 1], family: 'minor', help: 'i–II. Best in Phrygian. Dark, heavy, cinematic.' },
   { name: '12-Bar Blues', degs: [0, 0, 0, 0, 3, 3, 0, 0, 4, 3, 0, 4], family: 'major', help: 'The blues form. Needs 12 slots. Try Mixolydian and 7th chords.' },
 ];
 

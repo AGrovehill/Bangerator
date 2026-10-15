@@ -2,10 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="bangerator-static" content="1">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bangerator</title>
-<meta name="description" content="Compose music with scale degrees instead of note names. Swap scales, get chord suggestions, and export MIDI.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23ffd43b'/%3E%3Ctext x='16' y='22' font-size='16' text-anchor='middle' font-family='sans-serif' font-weight='bold'%3E1%3C/text%3E%3C/svg%3E">
+<meta name="description" content="Compose music with scale degrees instead of note names. Build patterns, arrange them into songs, and save everything to your own server.">
+<meta name="theme-color" content="#1c1e26">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -14,11 +18,21 @@
 
   <div class="group transport">
     <button id="btn-play" class="btn play" title="Play / stop (Space)">▶</button>
+    <div class="seg" id="mode-toggle" title="Loop the pattern you're editing, or play the whole song (L)">
+      <button data-mode="pattern" class="on">Pattern</button><button data-mode="song">Song</button>
+    </div>
     <label class="field" title="Tempo in beats per minute">BPM <input id="in-bpm" type="number" min="40" max="220" value="100"></label>
-    <label class="field" title="How many bars the loop lasts">Bars
+    <label class="field" title="Swing delays every second 16th note for a bouncy groove">Swing <input id="in-swing" type="range" min="0" max="0.6" step="0.02"></label>
+  </div>
+
+  <div class="group patsel">
+    <span class="pat-dot" id="pat-dot"></span>
+    <label class="field" title="The pattern you're editing. Patterns are the building blocks of the song.">Pattern <select id="in-pattern"></select></label>
+    <button class="btn small" id="btn-pat-new" title="New empty pattern">+</button>
+    <button class="btn small" id="btn-pat-clone" title="Clone this pattern">⧉</button>
+    <label class="field" title="How many bars this pattern lasts">Bars
       <select id="in-bars"></select>
     </label>
-    <label class="field" title="Swing delays every second 16th note for a bouncy groove">Swing <input id="in-swing" type="range" min="0" max="0.6" step="0.02"></label>
   </div>
 
   <div class="group keyscale">
@@ -31,25 +45,39 @@
 
   <nav class="tabs" role="tablist">
     <button class="tab active" data-tab="compose">Compose</button>
+    <button class="tab" data-tab="arrange">Arrange</button>
     <button class="tab" data-tab="mix">Mix &amp; FX</button>
     <button class="tab" data-tab="sound">Sound Design</button>
     <button class="tab" data-tab="learn">Learn</button>
   </nav>
 
   <div class="group menu">
+    <button class="btn small" id="btn-guide" title="Guided tracks">Guides</button>
+    <button class="ctl-status" id="ctl-status" hidden></button>
+    <button class="save-status" id="save-status" title="Projects (Ctrl+O)"><span class="dot"></span><span class="txt">…</span></button>
     <button class="btn small" id="btn-undo" title="Undo (Ctrl+Z)">↶</button>
+    <div class="dropdown">
+      <button class="btn small hist-btn" id="btn-history" title="Undo history: go back several steps at once">▾</button>
+      <div class="dropdown-menu hist-menu" id="menu-history"></div>
+    </div>
     <button class="btn small" id="btn-redo" title="Redo (Ctrl+Y)">↷</button>
     <div class="dropdown">
       <button class="btn" id="btn-file">File ▾</button>
       <div class="dropdown-menu" id="menu-file">
+        <button data-act="library">Projects… <kbd>Ctrl+O</kbd></button>
         <button data-act="new">New project</button>
-        <button data-act="demo">Load demo (Love Parade riff)</button>
-        <button data-act="save">Save project file (.json)</button>
-        <button data-act="open">Open project file…</button>
+        <button data-act="demo">New from demo</button>
+        <button data-act="guide">New guided track (techno, trance, house, DnB)…</button>
+        <button data-act="rename">Rename project…</button>
+        <button data-act="save">Save now <kbd>Ctrl+S</kbd></button>
+        <hr>
+        <button data-act="export">Export project file (.json)</button>
+        <button data-act="open">Import project file…</button>
         <hr>
         <button data-act="midi">Export MIDI (.mid)</button>
         <button data-act="wav">Export audio (.wav)</button>
         <hr>
+        <button data-act="controller">MIDI keyboard / Launchkey…</button>
         <button data-act="midiout">MIDI output to device…</button>
       </div>
     </div>
@@ -59,14 +87,17 @@
 
 <div class="app">
   <aside class="sidebar" id="sidebar">
-    <section class="card">
+    <section class="card" id="circle-card">
       <h3>Circle of Fifths</h3>
       <div id="circle"></div>
       <p class="hint">Neighbors on the circle sound good together. Click a key to move there.</p>
     </section>
     <section class="card" id="scale-card"></section>
+    <section class="card" id="coach-card"></section>
     <section class="card" id="chord-palette"></section>
     <section class="card" id="suggest-card"></section>
+    <section class="card" id="note-card"></section>
+    <section class="card" id="bass-card"></section>
     <section class="card" id="prog-card"></section>
   </aside>
 
@@ -78,8 +109,9 @@
         <button class="btn" id="btn-dup" title="Double the loop: copies every note, chord, drum hit and key change after itself">×2 Duplicate loop</button>
         <span class="scale-status" id="scale-status" hidden><span id="scale-status-text"></span>
           <button class="btn small" id="btn-snap" title="Move every out-of-scale note to its nearest scale note">Snap to scale</button></span>
+        <label class="field check" title="Only show the tracks and drum rows this pattern uses"><input type="checkbox" id="in-focus"> Hide unused lanes</label>
         <label class="field check"><input type="checkbox" id="in-notenames"> Show note names</label>
-        <span class="hint" id="compose-hint">Click the grid to add notes. Drag to move. Drag the right edge to stretch. Click a note again to delete. Shift+click a note in a Scale track makes it ♯/♭. Keys 1–8 play degrees.</span>
+        <span class="hint" id="compose-hint">Click the grid to add notes. Drag to move, drag the right edge to stretch, click a note again to delete. Ctrl+drag selects several: then drag, arrow keys, Ctrl+C/V/D, Delete. Alt+wheel = velocity. Shift+click makes a Scale note ♯/♭.</span>
       </div>
       <div class="timeline" id="timeline">
         <div class="timeline-inner" id="timeline-inner">
@@ -89,6 +121,8 @@
       </div>
     </section>
 
+    <section class="tabpanel" id="tab-arrange"></section>
+
     <section class="tabpanel" id="tab-mix"></section>
 
     <section class="tabpanel" id="tab-sound"></section>
@@ -97,6 +131,8 @@
       <iframe src="guide.html" title="Music theory guide" id="guide-frame"></iframe>
     </section>
   </main>
+
+  <aside class="guide" id="guide" hidden></aside>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -104,7 +140,7 @@
 <div class="start-overlay" id="start-overlay">
   <div class="start-box">
     <h1>Bangerator</h1>
-    <p>Make music with <b>numbers</b> instead of note names.<br>Pick a scale, put numbers on the grid, and swap scales to hear the same loop in a new mood.</p>
+    <p>Make music with <b>numbers</b> instead of note names.<br>Pick a scale, put numbers on the grid, swap scales to hear the same loop in a new mood, then arrange your patterns into a song.</p>
     <button class="btn big" id="btn-start">Start ▶</button>
     <p class="hint">All sound is made right here in your browser.</p>
   </div>

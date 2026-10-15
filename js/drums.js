@@ -15,11 +15,15 @@ export const DRUM_KINDS = [
   { kind: 'cowbell', name: 'Cowbell', gm: 56 },
   { kind: 'cymbal', name: 'Cymbal', gm: 49 },
   { kind: 'shaker', name: 'Maracas', gm: 70 },
+  { kind: 'ride', name: 'Ride', gm: 51 },
+  { kind: 'riser', name: 'Riser', gm: 55 },
+  { kind: 'impact', name: 'Impact', gm: 57 },
+  { kind: 'downer', name: 'Downlifter', gm: 52 },
 ];
 
 // Tweakable parameters (edited in the Sound Design tab).
 export const DRUM_PARAMS = {
-  kick: { tune: 50, decay: 0.9, punch: 3, click: 0.4 },
+  kick: { tune: 50, decay: 0.9, punch: 3, click: 0.4, drive: 0 }, // drive: distortion, the hardcore / gabber kick
   snare: { tune: 185, decay: 0.2, snappy: 0.7 },
   clap: { decay: 0.35, tone: 1100 },
   rim: { tune: 1700 },
@@ -31,6 +35,10 @@ export const DRUM_PARAMS = {
   cowbell: { decay: 0.35 },
   cymbal: { decay: 1.4, tone: 7000 },
   shaker: { decay: 0.06 },
+  ride: { decay: 0.6, tone: 6500 },
+  riser: { length: 3.6, tone: 9000 },   // noise sweep that builds for `length` seconds, then cuts
+  impact: { decay: 2.4, tune: 42 },     // sub boom + crash for the first beat of a drop
+  downer: { length: 2.5, tone: 7000 },  // noise sweep falling from `tone`: the energy draining out at a breakdown
 };
 
 // The six "metallic" square-wave frequencies used by the 808 hats and cymbal.
@@ -63,7 +71,18 @@ const VOICES = {
     o.frequency.exponentialRampToValueAtTime(p.tune * 1.3, 0.03);
     o.frequency.exponentialRampToValueAtTime(p.tune, 0.12);
     env(g.gain, 0, 1, p.decay, 0.002);
-    o.connect(g).connect(ctx.destination);
+    let out = ctx.destination;
+    if (p.drive > 0) {
+      // overdrive the body: the tail turns into a hard, tonal "bass" (gabber / hardcore)
+      const k = 1 + p.drive * 40;
+      const curve = new Float32Array(2048);
+      for (let i = 0; i < curve.length; i++) { const x = i / (curve.length - 1) * 2 - 1; curve[i] = Math.tanh(k * x) / Math.tanh(k) * 0.8; }
+      const sh = ctx.createWaveShaper(); sh.curve = curve; sh.oversample = '4x';
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5000 - p.drive * 2000;
+      sh.connect(lp).connect(ctx.destination);
+      out = sh;
+    }
+    o.connect(g).connect(out);
     o.start(0); o.stop(p.decay + 0.1);
     // beater click
     const n = ctx.createBufferSource();
@@ -137,6 +156,61 @@ const VOICES = {
     bp.connect(g).connect(ctx.destination);
     return p.decay + 0.1;
   },
+  ride: (ctx, p) => metal(ctx, p.decay, p.tone, 0.3),
+  riser(ctx, p) {
+    const L = p.length;
+    const n = ctx.createBufferSource(); n.buffer = noiseBuffer(ctx, L + 0.1);
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.4;
+    bp.frequency.setValueAtTime(250, 0);
+    bp.frequency.exponentialRampToValueAtTime(p.tone, L);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.02, 0);
+    g.gain.exponentialRampToValueAtTime(0.7, L);
+    g.gain.linearRampToValueAtTime(0, L + 0.03);
+    n.connect(bp).connect(g).connect(ctx.destination);
+    n.start(0);
+    // a rising tone underneath
+    const o = ctx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(110, 0);
+    o.frequency.exponentialRampToValueAtTime(1760, L);
+    const og = ctx.createGain();
+    og.gain.setValueAtTime(0.005, 0);
+    og.gain.exponentialRampToValueAtTime(0.12, L);
+    og.gain.linearRampToValueAtTime(0, L + 0.03);
+    o.connect(og).connect(ctx.destination);
+    o.start(0); o.stop(L + 0.05);
+    return L + 0.05;
+  },
+  downer(ctx, p) {
+    const L = p.length;
+    const n = ctx.createBufferSource(); n.buffer = noiseBuffer(ctx, L + 0.1);
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.2;
+    bp.frequency.setValueAtTime(p.tone, 0);
+    bp.frequency.exponentialRampToValueAtTime(180, L);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, 0);
+    g.gain.exponentialRampToValueAtTime(0.6, 0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, L);
+    n.connect(bp).connect(g).connect(ctx.destination);
+    n.start(0);
+    return L + 0.05;
+  },
+  impact(ctx, p) {
+    const o = ctx.createOscillator(); o.type = 'sine';
+    o.frequency.setValueAtTime(p.tune * 2.4, 0);
+    o.frequency.exponentialRampToValueAtTime(p.tune, 0.25);
+    const g = ctx.createGain(); env(g.gain, 0, 0.9, p.decay * 0.6, 0.003);
+    o.connect(g).connect(ctx.destination);
+    o.start(0); o.stop(p.decay);
+    const n = ctx.createBufferSource(); n.buffer = noiseBuffer(ctx, p.decay + 0.1);
+    const lp = ctx.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(9000, 0);
+    lp.frequency.exponentialRampToValueAtTime(500, p.decay);
+    const ng = ctx.createGain(); env(ng.gain, 0, 0.45, p.decay, 0.004);
+    n.connect(lp).connect(ng).connect(ctx.destination);
+    n.start(0);
+    return p.decay + 0.1;
+  },
   shaker(ctx, p) {
     const n = ctx.createBufferSource(); n.buffer = noiseBuffer(ctx, 0.3);
     const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 6000;
@@ -177,7 +251,7 @@ function tom(ctx, p) {
 }
 
 export async function renderDrum(kind, sampleRate, params = DRUM_PARAMS[kind]) {
-  const maxLen = 3;
+  const maxLen = 13;
   const ctx = new OfflineAudioContext(1, Math.floor(sampleRate * maxLen), sampleRate);
   const len = Math.min(maxLen, VOICES[kind](ctx, params));
   const full = await ctx.startRendering();

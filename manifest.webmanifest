@@ -1,0 +1,13 @@
+{
+  "name": "Bangerator",
+  "short_name": "Bangerator",
+  "description": "Scale-degree sketch DAW: patterns, song arrangement, saves everywhere.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#15161c",
+  "theme_color": "#1c1e26",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

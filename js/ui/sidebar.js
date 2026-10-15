@@ -1,12 +1,29 @@
 // Sidebar: circle of fifths, scale info, chord palette, "what comes next" and progressions.
 
-import { store, commit, changeKey, loopSteps, STEPS_PER_BAR, MAX_BARS, sections, keyAt } from '../state.js';
+import { store, commit, changeKey, loopSteps, STEPS_PER_BAR, MAX_BARS, sections, keyAt, snapToScale } from '../state.js';
 import { SCALES, scaleSteps, harmonyScaleId, spellScale, intervalLabel, stepPattern, keySignature, keyName,
   romanNumeral, chordName, chordFunction, CHORD_TYPES, FUNCTION_INFO, PROGRESSIONS, suggestNext, harmonize, chordSemis, chordQuality, mod } from '../theory.js';
 import { renderCircle } from './circle.js';
-import { ui, h, previewChord, previewDeg, toast, selectedKey } from './common.js';
-import { slotCount } from './compose.js';
-import { noteMidi } from '../sequencer.js';
+import { ui, h, previewChord, previewDeg, previewTrackMidi, toast, selectedKey } from './common.js';
+import { slotCount, selectTrack } from './compose.js';
+import { noteMidi, stepDuration, syncMixer } from '../sequencer.js';
+import { audio, playNote, ensureSampleSet } from '../audio.js';
+import { spellMidi } from '../theory.js';
+import { BASS_STYLES, bassLine, bassTrack, toTrackNotes, makeBassTrack, nextNotes, semisToNote, coach } from '../advisor.js';
+
+// Click a card's title to fold it away; remembered per browser.
+const FOLD_KEY = 'bangerator.sidebarFolded';
+let folded = {};
+try { folded = JSON.parse(localStorage.getItem(FOLD_KEY)) || {}; } catch { /* none */ }
+const sidebarEl = document.getElementById('sidebar');
+for (const card of sidebarEl.querySelectorAll('.card')) if (folded[card.id]) card.classList.add('collapsed');
+sidebarEl.addEventListener('click', e => {
+  const title = e.target.closest('.card > h3');
+  const card = title?.parentElement;
+  if (!card?.id) return;
+  folded[card.id] = card.classList.toggle('collapsed');
+  try { localStorage.setItem(FOLD_KEY, JSON.stringify(folded)); } catch { /* private mode */ }
+});
 
 // Modes from brightest to darkest: swapping along this line changes the mood step by step.
 const BRIGHTNESS = ['lydian', 'major', 'mixolydian', 'dorian', 'minor', 'phrygian', 'locrian'];
@@ -27,6 +44,134 @@ export function renderSidebar() {
   renderPalette(p);
   renderSuggestions(proj);
   renderProgressions(p);
+  renderAdvice();
+}
+
+// The cards that depend on the notes themselves (cheap, so they refresh on every edit).
+export function renderAdvice() {
+  const p = store.project;
+  renderCoach(p);
+  renderNextNote(p);
+  renderBass(p);
+}
+
+// ---------- Coach ----------
+const KIND_ICON = { fix: '!', tip: '→', good: '✓' };
+
+function renderCoach(p) {
+  const card = document.getElementById('coach-card');
+  let findings = [];
+  try { findings = coach(p); } catch (e) { console.warn('Coach failed', e); }
+  card.replaceChildren(
+    h('h3', {}, 'Coach'),
+    findings.length ? h('div', { class: 'coach-list' }, ...findings.map(f => h('div', { class: 'coach-item ' + f.kind },
+      h('span', { class: 'coach-icon' }, KIND_ICON[f.kind]),
+      h('div', { class: 'coach-body' },
+        h('div', { class: 'coach-title' }, f.title),
+        h('div', { class: 'coach-why' }, f.why),
+        f.fixLabel ? h('button', { class: 'btn', onclick: () => {
+          if (f.action === 'harmonize') return autoHarmonize();
+          if (f.action === 'snap') { snapToScale(); toast('Every note moved to its nearest scale note.'); return; }
+          f.fix(store.project);
+          commit('all');
+          toast('Done. Ctrl+Z to undo.');
+        } }, f.fixLabel) : null))))
+      : h('p', { class: 'hint' }, 'Write some notes or chords and I’ll point out what could be better, and why.'),
+    h('p', { class: 'hint' }, 'Looks at this pattern: melody against chords, the bass, the mix. These are habits that usually work, not rules.'));
+}
+
+// ---------- What note next? ----------
+function renderNextNote(p) {
+  const card = document.getElementById('note-card');
+  const t = p.tracks.find(x => x.id === ui.selectedTrackId) || p.tracks[0];
+  if (!t) { card.replaceChildren(h('h3', {}, 'Next note?'), h('p', { class: 'hint' }, 'Add a melody track first.')); return; }
+  const { step, len, ideas } = nextNotes(p, t);
+  if (step == null) {
+    card.replaceChildren(h('h3', {}, 'Next note?'), h('p', { class: 'hint' }, `“${t.name}” is written to the end of the pattern. Make the pattern longer (Bars) to continue.`));
+    return;
+  }
+  const k = keyAt(p, step);
+  const n = SCALES[k.scale].steps.length;
+  const where = `bar ${Math.floor(step / STEPS_PER_BAR) + 1}, beat ${Math.floor((step % STEPS_PER_BAR) / 4) + 1}${step % 4 ? ' +' : ''}`;
+  card.replaceChildren(
+    h('h3', {}, 'Next note?'),
+    h('div', { style: { fontWeight: 700, marginBottom: '6px' } }, `For “${t.name}” at ${where}`),
+    h('div', { class: 'sugg' }, ...ideas.map(idea => {
+      const asDeg = semisToNote(p, { mode: 'scale' }, idea.semis, step);
+      const midi = 12 * (t.octave + 1) + k.root + idea.semis;
+      const label = (asDeg.alt ? (asDeg.alt > 0 ? '♯' : '♭') : '') + (mod(asDeg.deg, n) + 1);
+      const el = h('div', { class: 'sugg-item', title: 'Click to hear it. + adds it to the track.' },
+        h('span', { class: 'rn' }, label, p.showNoteNames ? h('small', {}, ' ' + spellMidi(midi, k.root, k.scale)) : null),
+        h('div', { style: { flex: 1 } }, h('div', { class: 'why' }, idea.why)),
+        h('button', { class: 'btn small', title: 'Add this note', onclick: e => {
+          e.stopPropagation();
+          t.notes.push({ step, len: Math.min(len, loopSteps() - step), vel: 0.85, ...semisToNote(p, t, idea.semis, step) });
+          previewTrackMidi(t, midi);
+          commit('notes');
+        } }, '+'));
+      el.style.setProperty('--fn', idea.isChordTone ? 'var(--fn-home)' : 'var(--line-strong)');
+      el.addEventListener('click', () => previewTrackMidi(t, midi));
+      return el;
+    })),
+    h('p', { class: 'hint' }, 'Green = a note of the chord playing there. Click a track to get ideas for it.'));
+}
+
+// ---------- Bassline ideas ----------
+let previewStops = [];
+
+function previewLine(p, track, line) {
+  previewStops.forEach(s => s?.());
+  previewStops = [];
+  if (!audio.ctx) return;
+  const patch = p.patches[track.patch];
+  if (!patch) return;
+  if (patch.kind === 'sampler') ensureSampleSet(patch.set);
+  syncMixer();
+  const strip = audio.mixer.strip(track.id);
+  if (track.id === 'preview') strip.gain.gain.value = 0.9;
+  const sd = stepDuration(p.bpm);
+  const t0 = audio.ctx.currentTime + 0.05;
+  const limit = Math.min(loopSteps(), 2 * Math.max(STEPS_PER_BAR, p.chords.slotSteps)); // the first two chords or so
+  for (const n of line) {
+    if (n.step >= limit) continue;
+    const midi = 12 * (track.octave + 1) + keyAt(p, n.step).root + n.semis;
+    previewStops.push(playNote(audio.ctx, strip.gain, patch, midi, t0 + n.step * sd, n.len * sd * 0.95, n.vel));
+  }
+}
+
+function renderBass(p) {
+  const card = document.getElementById('bass-card');
+  const target = ui.bassTarget === '' ? null : (p.tracks.find(t => t.id === ui.bassTarget) || bassTrack(p));
+  const voice = target || { id: 'preview', patch: 'sawbass', octave: 2 };
+  const hasChords = p.chords.slots.slice(0, slotCount(p)).some(Boolean);
+  const sel = h('select', { title: 'Which track gets the bassline', onchange: e => { ui.bassTarget = e.target.value; renderBass(store.project); } },
+    ...p.tracks.map(t => h('option', { value: t.id, selected: t === target }, t.name)),
+    h('option', { value: '', selected: !target }, '(new Bass track)'));
+  card.replaceChildren(
+    h('h3', {}, 'Bassline ideas'),
+    h('div', { class: 'type-row', style: { alignItems: 'center' } }, h('span', { class: 'hint', style: { margin: 0 } }, 'Write to'), sel),
+    h('div', { class: 'prog-list' }, ...BASS_STYLES.map(st => {
+      const el = h('div', { class: 'prog-item', title: 'Click to hear the start of it' },
+        h('div', { class: 'pn' }, h('span', {}, st.name),
+          h('button', { class: 'btn small', title: 'Write this bassline into the track (replaces its notes in this pattern)', onclick: e => { e.stopPropagation(); useBass(st); } }, 'Use')),
+        h('div', { class: 'ph' }, st.help));
+      el.addEventListener('click', () => previewLine(store.project, voice, bassLine(store.project, st.id)));
+      return el;
+    })),
+    h('p', { class: 'hint' }, hasChords ? 'Built from your chord lane, so they always fit. Change a chord and “Use” again.' : 'No chords yet, so these stay on the home note. Add chords first for basslines that follow them.'));
+}
+
+function useBass(st) {
+  const p = store.project;
+  let t = ui.bassTarget === '' ? null : (p.tracks.find(x => x.id === ui.bassTarget) || bassTrack(p));
+  if (!t) { t = makeBassTrack(p); p.tracks.push(t); }
+  ui.bassTarget = t.id;
+  const L = loopSteps();
+  const had = t.notes.some(n => n.step < L);
+  t.notes = toTrackNotes(p, t, bassLine(p, st.id));
+  selectTrack(t.id);
+  commit('all');
+  toast(`${st.name} bass written to “${t.name}”${had ? ' (replaced what was there; Ctrl+Z brings it back)' : ''}.`);
 }
 
 function renderScaleCard(p) {

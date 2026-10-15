@@ -13,6 +13,12 @@ export const ui = {
   rowH: 17,
   soundPatchId: 'keys',
   selectedSection: 0, // which key section the top bar and sidebar are editing
+  barW: 28,           // playlist zoom (pixels per bar)
+  selectedClip: null, // playlist clip id
+  ctlChannel: null,   // what a MIDI controller's keys and knobs drive (track id, 'chords' or 'drums')
+  focusLanes: (() => { try { return localStorage.getItem('bangerator.focusLanes') !== '0'; } catch { return true; } })(), // hide lanes a pattern doesn't use
+  showAllLanes: false, // 'Show everything' for the current pattern
+  bassTarget: null,   // track id that Bassline ideas write to ('' = a new track, null = guess the bass track)
 };
 
 // The key section being edited (top bar, sidebar, circle of fifths).
@@ -81,6 +87,7 @@ export function toast(msg, ms = 2600) {
 export function modal(html, onMount) {
   const m = document.getElementById('modal');
   const box = document.getElementById('modal-box');
+  box.className = 'modal-box';
   box.innerHTML = html;
   m.hidden = false;
   const close = () => { m.hidden = true; box.innerHTML = ''; };
@@ -120,3 +127,25 @@ export function download(blob, name) {
 
 export { STEPS_PER_BAR };
 export async function ensureAudio() { return initAudio(); }
+
+// A small menu at the mouse. items: [[label, fn] | null | '-' (separator)]
+export function popupMenu(e, items) {
+  document.querySelector('.ctx-menu')?.remove();
+  const menu = h('div', { class: 'ctx-menu', style: { left: e.clientX + 'px', top: e.clientY + 'px' } },
+    ...items.filter(Boolean).map(it => (it === '-' ? h('hr') : h('button', { onclick: () => { menu.remove(); it[1](); } }, it[0]))));
+  document.body.append(menu);
+  const r = menu.getBoundingClientRect();
+  if (r.right > innerWidth) menu.style.left = innerWidth - r.width - 6 + 'px';
+  if (r.bottom > innerHeight) menu.style.top = Math.max(6, innerHeight - r.height - 6) + 'px';
+  const close = ev => {
+    if (ev.type === 'keydown' && ev.key !== 'Escape') return;
+    if (ev.type === 'pointerdown' && menu.contains(ev.target)) return;
+    menu.remove();
+    window.removeEventListener('pointerdown', close, true);
+    window.removeEventListener('keydown', close, true);
+  };
+  setTimeout(() => {
+    window.addEventListener('pointerdown', close, true);
+    window.addEventListener('keydown', close, true);
+  });
+}

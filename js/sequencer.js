@@ -1,9 +1,11 @@
 // Transport + scheduler. Uses the classic "look-ahead" pattern: a timer wakes up often
 // and schedules any steps that fall in the next ~120 ms on the audio clock.
-// The same event builder is used for live playback, WAV rendering and MIDI export.
+// Two modes, like FL Studio: loop the open pattern, or play the song (the playlist).
+// The same timeline builder is used for live playback, WAV rendering and MIDI export.
 
 import { audio, playNote, playBuffer, Mixer, ensureSampleSet, loadSampleSet } from './audio.js';
-import { store, loopSteps, STEPS_PER_BAR, keyAt, scaleNoteMidi } from './state.js';
+import { store, STEPS_PER_BAR, keyAt, scaleNoteMidi, patternView, songBars, defaultFx } from './state.js';
+import { autoEvents, applyAuto, patchFor } from './automation.js';
 import { scaleSteps, harmonyScaleId, chordSemis, voiceLead, mod } from './theory.js';
 import { renderDrumKit, DRUM_KINDS } from './drums.js';
 import { midiOut } from './midi.js';
@@ -19,7 +21,7 @@ export function noteMidi(p, track, note) {
 // Returns array of { midis, deg, type } | null
 export function chordVoicings(p) {
   const c = p.chords;
-  const slotCount = Math.ceil(loopSteps() / c.slotSteps);
+  const slotCount = Math.ceil(p.bars * STEPS_PER_BAR / c.slotSteps);
   const out = [];
   let prevCenter = null;
   for (let i = 0; i < slotCount; i++) {
@@ -44,9 +46,10 @@ function audibleSet(items) {
   return x => !x.mute && (!anySolo || x.solo);
 }
 
-// Build every event in one loop pass: [{ step, dur (in steps), kind, ... }]
+// Build every event of one pattern pass: [{ step, dur (in steps), kind, ... }]
+// `p` is the project (= its open pattern) or a patternView().
 export function buildEvents(p) {
-  const L = loopSteps();
+  const L = p.bars * STEPS_PER_BAR;
   const events = [];
   const melodic = [...p.tracks, p.chords];
   const audible = audibleSet(melodic);
@@ -61,7 +64,7 @@ export function buildEvents(p) {
 
   const c = p.chords;
   const voicings = chordVoicings(p);
-  const chAud = audible(c);
+  const chAud = audible(c) && !p.chordsGuide; // guide-only chords stay silent
   voicings.forEach((v, i) => {
     if (!v) return;
     const start = i * c.slotSteps;
@@ -72,6 +75,12 @@ export function buildEvents(p) {
       v.midis.forEach(m => push(start, len, m));
     } else if (c.style === 'strum') {
       v.midis.forEach((m, k) => push(start + k * 0.25, len - k * 0.25, m));
+    } else if (c.style === 'gate') {
+      // the chord chopped into 16ths by a rhythmic gate (trance / psy pads)
+      for (let s = 0; s < len; s++) {
+        const g = GATE[(start + s) % 16];
+        if (g) v.midis.forEach(m => push(start + s, 0.55, m, g === 2 ? 0.75 : 0.55));
+      }
     } else if (c.style === 'stabs') {
       for (let s = 0; s < len; s += 4) v.midis.forEach(m => push(start + s + 2, 1, m, 0.75)); // off-beat stabs
     } else {
@@ -96,6 +105,48 @@ export function buildEvents(p) {
   return events;
 }
 
+// Within a step: automation first (releases, pattern lanes, song lanes), then notes, so notes hear it.
+const byStep = (a, b) => a.step - b.step || (a.prio ?? 3) - (b.prio ?? 3);
+
+export function patternTimeline(p) {
+  const length = p.bars * STEPS_PER_BAR;
+  return { events: [...buildEvents(p), ...autoEvents(p.patAuto, length)].sort(byStep), length };
+}
+
+// Every clip in the playlist, laid out on one timeline (steps from the song start).
+export function songTimeline(p) {
+  const events = [];
+  const built = new Map(); // one event list per pattern + key combination
+  const songTargets = new Set(p.song.auto.filter(l => l.points.length).map(l => l.target)); // song lanes win
+  for (const c of p.song.clips) {
+    if (p.song.lanes[c.lane]?.mute) continue;
+    const k = c.pat + '|' + (c.key ? `${c.key.root}${c.key.scale}` : '');
+    if (!built.has(k)) {
+      const v = patternView(p, c.pat, c.key);
+      built.set(k, v ? { evs: [...buildEvents(v), ...autoEvents(v.patAuto, v.bars * STEPS_PER_BAR, 1, songTargets)], len: v.bars * STEPS_PER_BAR,
+        autoTargets: [...new Set(v.patAuto.filter(l => l.points.length && !songTargets.has(l.target)).map(l => l.target))] } : null);
+    }
+    const src = built.get(k);
+    if (!src) continue;
+    const clipLen = c.len * STEPS_PER_BAR, base = c.bar * STEPS_PER_BAR;
+    for (let off = 0; off < clipLen; off += src.len) {
+      for (const e of src.evs) {
+        const s = off + e.step;
+        if (s >= clipLen) continue;
+        events.push({ ...e, step: base + s, dur: Math.min(e.dur, clipLen - s), clipId: c.id });
+      }
+    }
+    // when the clip ends, its pattern's automation hands back to the mixer
+    for (const target of src.autoTargets) events.push({ step: base + clipLen, kind: 'auto', target, value: null, prio: 0 });
+  }
+  const length = songBars(p) * STEPS_PER_BAR;
+  events.push(...autoEvents(p.song.auto, length, 2));
+  events.sort(byStep);
+  return { events, length };
+}
+
+const GATE = [2, 0, 1, 1, 0, 1, 1, 0, 2, 0, 1, 1, 0, 1, 1, 1]; // 2 = accented 16th, 1 = soft, 0 = silent
+
 // Swing delays every second 16th note.
 export function swingOffset(p, step) {
   return (Math.floor(step) % 2 === 1 ? p.swing * 0.5 : 0);
@@ -103,8 +154,9 @@ export function swingOffset(p, step) {
 
 // ---------- Live transport ----------
 export const transport = {
+  mode: 'pattern',  // 'pattern' loops the open pattern, 'song' plays the playlist
   playing: false,
-  step: 0,          // next step to schedule (loop-relative)
+  step: 0,          // next step to schedule (pattern step, or song step)
   nextTime: 0,      // audio time of that step
   timer: null,
   events: null,     // cached events, rebuilt when the project changes
@@ -113,9 +165,24 @@ export const transport = {
 
 export function invalidateEvents() { transport.events = null; }
 
+function timeline() {
+  const p = store.project;
+  return transport.mode === 'song' ? songTimeline(p) : patternTimeline(p);
+}
+
+// Where playback wraps: the pattern, or the song's loop region (whole song when none is set).
+export function loopRange() {
+  const p = store.project;
+  if (transport.mode !== 'song') return { start: 0, end: p.bars * STEPS_PER_BAR };
+  const end = Math.max(1, songBars(p)) * STEPS_PER_BAR;
+  const l = p.song.loop;
+  if (l && l.end > l.start) return { start: l.start * STEPS_PER_BAR, end: l.end * STEPS_PER_BAR };
+  return { start: 0, end };
+}
+
 function eventsFor(step) {
   if (!transport.events) {
-    const all = buildEvents(store.project);
+    const all = timeline().events;
     const map = new Map();
     for (const e of all) {
       const k = Math.floor(e.step);
@@ -136,9 +203,12 @@ export function syncMixer(mixer = audio.mixer, p = store.project) {
   mixer.setStrip('chords', p.chords.volume, p.chords.pan, aud(p.chords), p.chords.fx);
   mixer.setStrip('drums', p.drums.volume, 0, true, p.drums.fx);
   const dAud = audibleSet(p.drums.rows);
-  p.drums.rows.forEach(r => mixer.setRow(r.id, r.vol, dAud(r)));
+  // drum sounds have their own strips; their effects only count when the drums are split per sound
+  p.drums.rows.forEach(r => mixer.setStrip('row:' + r.id, r.vol, r.pan || 0, dAud(r), p.drums.split ? r.fx : FLAT_FX));
   mixer.setBus(p.fxBus, stepDuration(p.bpm));
 }
+
+const FLAT_FX = defaultFx();
 
 function drumBuffer(row) {
   return row.kind === 'sample' ? audio.userBuffers[row.sampleId] : audio.drumBuffers[row.kind];
@@ -154,8 +224,10 @@ function scheduleStep(step, time) {
   if (step % 4 === 0) audio.mixer.pumpAt(time, sd * 4, p.fxBus.pumpRelease);
   for (const e of eventsFor(step)) {
     const t = time + (e.step - step + swingOffset(p, e.step)) * sd;
-    if (e.kind === 'note') {
-      const patch = p.patches[e.patch];
+    if (e.kind === 'auto') {
+      applyAuto(audio.mixer, p, e, Math.max(t, ctx.currentTime));
+    } else if (e.kind === 'note') {
+      const patch = patchFor(audio.mixer, e.trackId, p.patches[e.patch]);
       if (!patch) continue;
       if (e.audible && !midiOut.localMute) playNote(ctx, audio.mixer.strip(e.trackId).gain, patch, e.midi, t, e.dur * sd * 0.98, e.vel);
       if (e.audible) midiOut.note(e.channel, e.midi, e.vel, t, e.dur * sd * 0.98);
@@ -176,8 +248,8 @@ function tick() {
   const p = store.project;
   const ahead = 0.12;
   while (transport.nextTime < ctx.currentTime + ahead) {
-    const L = loopSteps();
-    if (transport.step >= L) transport.step = 0;
+    const { start, end } = loopRange();
+    if (transport.step >= end) transport.step = start;
     scheduleStep(transport.step, transport.nextTime);
     transport.visualQueue.push({ step: transport.step, time: transport.nextTime });
     transport.nextTime += stepDuration(p.bpm);
@@ -197,6 +269,7 @@ export function play(fromStep = 0) {
   transport.step = fromStep;
   transport.nextTime = audio.ctx.currentTime + 0.06;
   transport.visualQueue = [];
+  transport.lastVisual = -1;
   invalidateEvents();
   tick();
   transport.timer = setInterval(tick, 25);
@@ -210,6 +283,9 @@ export function stop() {
   midiOut.allOff();
   const mx = audio.mixer;
   if (mx) {
+    mx.cancelScheduled();
+    mx.synthOverride?.clear();
+    syncMixer(); // automation hands back to the mixer
     mx.resetPump();
     // quickly fade the master so ringing notes and echoes stop cleanly
     const t = audio.ctx.currentTime;
@@ -218,6 +294,34 @@ export function stop() {
     m.setTargetAtTime(0, t, 0.02);
     m.setTargetAtTime(store.project.fxBus.master, t + 0.15, 0.01);
   }
+}
+
+// Exact position (fractional step) of what you are hearing right now, accounting for output latency.
+// Used to place notes recorded from a MIDI keyboard.
+export function heardPosition() {
+  if (!transport.playing) return -1;
+  const ctx = audio.ctx;
+  const sd = stepDuration(store.project.bpm);
+  const heard = ctx.currentTime - (ctx.outputLatency || ctx.baseLatency || 0);
+  let pos = transport.step - (transport.nextTime - heard) / sd;
+  const { start, end } = loopRange();
+  // just wrapped around: what you hear is still the end of the loop
+  if (pos < start && transport.step >= start && transport.step - start < 16) pos += end - start;
+  return pos;
+}
+
+// Where the open pattern is being played right now (for the editor's playhead), or -1.
+export function openPatternStep(step) {
+  if (step < 0) return -1;
+  const p = store.project;
+  if (transport.mode !== 'song') return step;
+  const len = p.bars * STEPS_PER_BAR;
+  for (const c of p.song.clips) {
+    if (c.pat !== p.currentPattern || p.song.lanes[c.lane]?.mute) continue;
+    const rel = step - c.bar * STEPS_PER_BAR;
+    if (rel >= 0 && rel < c.len * STEPS_PER_BAR) return rel % len;
+  }
+  return -1;
 }
 
 // Current playhead step for drawing (reads the queue against the audio clock).
@@ -232,10 +336,13 @@ export function currentVisualStep() {
 }
 
 // ---------- Offline render to WAV ----------
-export async function renderWav(loops = 2) {
+// song: render the whole playlist once; otherwise the open pattern `loops` times.
+export async function renderWav({ song = false, loops = 2 } = {}) {
   const p = store.project;
   const sd = stepDuration(p.bpm);
-  const L = loopSteps();
+  const tl = song ? songTimeline(p) : patternTimeline(p);
+  if (song) loops = 1;
+  const L = tl.length;
   const tail = Math.max(2, p.fxBus.reverbSize + 1);
   const sr = 44100;
   const total = L * sd * loops + tail;
@@ -244,7 +351,7 @@ export async function renderWav(loops = 2) {
   mixer.immediate = true;
   syncMixer(mixer, p);
   const kit = await renderDrumKit(sr, p.drumParams);
-  const events = buildEvents(p);
+  const events = tl.events;
   // make sure sampled instruments are loaded before rendering
   const sets = new Set(events.map(e => p.patches[e.patch]).filter(x => x?.kind === 'sampler').map(x => x.set));
   await Promise.all([...sets].map(loadSampleSet));
@@ -254,10 +361,12 @@ export async function renderWav(loops = 2) {
   for (let loop = 0; loop < loops; loop++) {
     let open = null;
     for (const e of events) {
-      if (!e.audible) continue;
+      if (!e.audible && e.kind !== 'auto') continue;
       const t = start + (loop * L + e.step + swingOffset(p, e.step)) * sd;
-      if (e.kind === 'note') {
-        const patch = p.patches[e.patch];
+      if (e.kind === 'auto') {
+        applyAuto(mixer, p, e, t);
+      } else if (e.kind === 'note') {
+        const patch = patchFor(mixer, e.trackId, p.patches[e.patch]);
         if (patch) playNote(ctx, mixer.strip(e.trackId).gain, patch, e.midi, t, e.dur * sd * 0.98, e.vel);
       } else {
         const buf = e.row.kind === 'sample' ? audio.userBuffers[e.row.sampleId] : kit[e.row.kind];
